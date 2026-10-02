@@ -2,7 +2,7 @@
 
 성적증명서 제출·검토 MVP의 API 서버 (FastAPI · SQLAlchemy · SQLite → PostgreSQL 예정)
 
-- 명세: API 명세 정리본 v1.1 (MVP 37개, `E-` ID 기준) — 문서 페이지 https://claude.ai/artifact/TJjvbbQMuSkcUxVc7aXLqc (공유받은 사람만 열람)
+- 명세: API 명세 정리본 v1.1 (MVP 37개, `E-` ID 기준) — 기준 명세는 팀 Notion "API 명세서 v1" (https://app.notion.com/p/API-v1-6abadc8fd58083c2b3e10115e8181935)
 - ERD 기준: erdcloud `KTScholarship_platform` (+ 10/2 회의 결정 반영 예정)
 
 ## 실행
