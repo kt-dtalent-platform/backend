@@ -1,0 +1,10 @@
+pluginManagement {
+    repositories {
+        // Maven Central 다운로드 오류 대응 미러
+        maven { url = uri('https://maven-central.storage-download.googleapis.com/maven2/') }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'backend'
