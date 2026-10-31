@@ -1,4 +1,6 @@
 HELP.md
+.tools/
+.data/
 .env
 .env.*
 !.env.example

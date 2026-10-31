@@ -1,0 +1,2 @@
+INSERT INTO request_templates(id,code,name,default_fields) VALUES(1,'GRADE_CERTIFICATE','성적증명서',
+'[{"fieldKey":"gpa","label":"평점 평균","fieldType":"NUMBER","required":true},{"fieldKey":"gpa_scale","label":"평점 만점","fieldType":"SELECT_ONE","required":true,"options":[4.0,4.3,4.5]},{"fieldKey":"credits","label":"취득 학점","fieldType":"NUMBER","required":true},{"fieldKey":"certificate","label":"성적증명서","fieldType":"FILE","required":true}]');
