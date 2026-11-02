@@ -2,15 +2,21 @@ package kr.co.ktscholarship.backend.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import kr.co.ktscholarship.backend.common.response.ApiResponse;
 
 @RestControllerAdvice
-public class GlobalExceptionHandler {
+public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(
@@ -27,23 +33,52 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidationException(
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception,
-            HttpServletRequest request
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request
     ) {
         List<String> invalidFields = exception.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getField)
                 .distinct()
                 .toList();
 
-        return ResponseEntity.badRequest()
-                .body(ApiResponse.failure(
+        return createResponseEntity(
+                ApiResponse.failure(
                         ErrorCode.INVALID_REQUEST.code(),
                         ErrorCode.INVALID_REQUEST.message(),
                         invalidFields,
-                        request.getRequestURI()
-                ));
+                        requestPath(request)
+                ),
+                headers,
+                status,
+                request
+        );
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+            Exception exception,
+            Object body,
+            HttpHeaders headers,
+            HttpStatusCode status,
+            WebRequest request
+    ) {
+        ErrorCode errorCode = errorCodeFor(status);
+        return super.handleExceptionInternal(
+                exception,
+                ApiResponse.failure(
+                        errorCode.code(),
+                        errorCode.message(),
+                        null,
+                        requestPath(request)
+                ),
+                headers,
+                status,
+                request
+        );
     }
 
     @ExceptionHandler(Exception.class)
@@ -58,5 +93,28 @@ public class GlobalExceptionHandler {
                         null,
                         request.getRequestURI()
                 ));
+    }
+
+    private ErrorCode errorCodeFor(HttpStatusCode status) {
+        if (status.isSameCodeAs(HttpStatus.BAD_REQUEST)) {
+            return ErrorCode.INVALID_REQUEST;
+        }
+        if (status.isSameCodeAs(HttpStatus.NOT_FOUND)) {
+            return ErrorCode.RESOURCE_NOT_FOUND;
+        }
+        if (status.isSameCodeAs(HttpStatus.METHOD_NOT_ALLOWED)) {
+            return ErrorCode.METHOD_NOT_ALLOWED;
+        }
+        if (status.isSameCodeAs(HttpStatus.FORBIDDEN)) {
+            return ErrorCode.ACCESS_DENIED;
+        }
+        return ErrorCode.INTERNAL_SERVER_ERROR;
+    }
+
+    private String requestPath(WebRequest request) {
+        if (request instanceof ServletWebRequest servletWebRequest) {
+            return servletWebRequest.getRequest().getRequestURI();
+        }
+        return "";
     }
 }
