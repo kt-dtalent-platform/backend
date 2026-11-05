@@ -6,6 +6,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -81,6 +83,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         );
     }
 
+    // 보안 예외는 응답을 만들지 않고 다시 던져 Security 필터(401·403 응답기)가 처리하게 한다
+    @ExceptionHandler({AccessDeniedException.class, AuthenticationException.class})
+    public void rethrowSecurityException(RuntimeException exception) {
+        throw exception;
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(
             Exception exception,
@@ -98,6 +106,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private ErrorCode errorCodeFor(HttpStatusCode status) {
         if (status.isSameCodeAs(HttpStatus.BAD_REQUEST)) {
             return ErrorCode.INVALID_REQUEST;
+        }
+        if (status.isSameCodeAs(HttpStatus.UNAUTHORIZED)) {
+            return ErrorCode.UNAUTHORIZED;
         }
         if (status.isSameCodeAs(HttpStatus.NOT_FOUND)) {
             return ErrorCode.RESOURCE_NOT_FOUND;
