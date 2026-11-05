@@ -1,6 +1,7 @@
 package kr.co.ktscholarship.backend.scholar;
 
 import java.util.Optional;
+import kr.co.ktscholarship.backend.common.util.PhoneMasker;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -25,22 +26,10 @@ public class ScholarDetailRepository {
             .param("scholarId", scholarId)
             .query((row, index) -> new ScholarDetailResponse(
                 row.getLong("id"), row.getString("name"), row.getString("email"),
-                maskPhone(row.getString("phone")), row.getString("school_name"),
+                PhoneMasker.mask(row.getString("phone")), row.getString("school_name"),
                 row.getString("major"),
                 new ScholarDetailResponse.Cohort(row.getLong("cohort_id"), row.getString("cohort_name")),
                 row.getString("status")
             )).optional();
-    }
-
-    private static String maskPhone(String phone) {
-        if (phone == null) {
-            return null;
-        }
-        String digits = phone.replaceAll("\\D", "");
-        if (digits.length() != 10 && digits.length() != 11) {
-            return "****";
-        }
-        int prefixLength = digits.startsWith("02") ? 2 : 3;
-        return digits.substring(0, prefixLength) + "-****-" + digits.substring(digits.length() - 4);
     }
 }
