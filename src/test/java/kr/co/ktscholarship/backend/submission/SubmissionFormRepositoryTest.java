@@ -113,6 +113,8 @@ class SubmissionFormRepositoryTest {
             .containsExactly("test_number", "test_file");
         assertThat(data.fields().getFirst().validation()).containsEntry("min", 0);
         assertThat(data.fields().getLast().validation()).isNull();
+        assertThat(data.fields().getFirst().options()).isNull();
+        assertThat(data.fields().getFirst().helpText()).isNull();
         assertThat(data.submission().id()).isEqualTo(201);
         assertThat(data.submission().answers()).containsEntry("test_number", 3.5).containsEntry("test_flag", true);
         assertThat(data.submission().version()).isEqualTo(4);
@@ -122,6 +124,30 @@ class SubmissionFormRepositoryTest {
         assertThat(data.revision().reason()).isEqualTo("성적증명서 파일 확인 필요");
         assertThat(data.revision().fieldKeys()).containsExactly("test_file");
         assertThat(mapper.writeValueAsString(data)).doesNotContain("private-key", "staff-only", "internalMemo");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT_ONE", "SELECT_MULTI"})
+    void returnsFieldOptionsAndHelpText(String fieldType) {
+        jdbc.sql("""
+            UPDATE request_fields SET field_type = :fieldType,
+                options = '[{"value":"4.5","label":"4.5점 만점"},{"value":"4.3","label":"4.3점 만점"}]' FORMAT JSON,
+                help_text = '학교의 성적 만점을 선택해 주세요.'
+            WHERE id = 12
+            """).param("fieldType", fieldType).update();
+
+        var field = repository.find(31, 101).fields().getFirst();
+
+        assertThat(field.fieldType()).isEqualTo(fieldType);
+        assertThat(field.options()).containsExactly(
+            new SubmissionFormData.Option("4.5", "4.5점 만점"),
+            new SubmissionFormData.Option("4.3", "4.3점 만점")
+        );
+        assertThat(field.helpText()).isEqualTo("학교의 성적 만점을 선택해 주세요.");
+        var json = mapper.readTree(mapper.writeValueAsString(field));
+        assertThat(json.get("options").get(0).get("value").asText()).isEqualTo("4.5");
+        assertThat(json.get("options").get(0).get("label").asText()).isEqualTo("4.5점 만점");
+        assertThat(json.get("helpText").asText()).isEqualTo(field.helpText());
     }
 
     @Test

@@ -12,8 +12,12 @@ public record SubmissionFormData(
     }
 
     public record Field(
-        String fieldKey, String label, String fieldType, boolean required, Map<String, Object> validation
+        String fieldKey, String label, String fieldType, boolean required,
+        List<Option> options, Map<String, Object> validation, String helpText
     ) {
+    }
+
+    public record Option(String value, String label) {
     }
 
     public record Submission(long id, String status, Map<String, Object> answers, int version) {

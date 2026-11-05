@@ -8,6 +8,7 @@ import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Field;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.File;
+import kr.co.ktscholarship.backend.submission.SubmissionFormData.Option;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Request;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Revision;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Submission;
@@ -21,6 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 public class SubmissionFormRepository {
 
     private static final TypeReference<Map<String, Object>> OBJECT_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<Option>> OPTIONS_TYPE = new TypeReference<>() {};
 
     private final JdbcClient jdbc;
     private final JsonMapper mapper;
@@ -51,12 +53,13 @@ public class SubmissionFormRepository {
         }
 
         var fields = jdbc.sql("""
-            SELECT field_key, label, field_type, required, validation FROM request_fields
+            SELECT field_key, label, field_type, required, options, validation, help_text FROM request_fields
             WHERE request_id = :id ORDER BY sort_order
             """).param("id", requestId)
             .query((row, index) -> new Field(
                 row.getString("field_key"), row.getString("label"), row.getString("field_type"),
-                row.getBoolean("required"), object(row.getString("validation"))
+                row.getBoolean("required"), options(row.getString("options")),
+                object(row.getString("validation")), row.getString("help_text")
             )).list();
 
         var submission = jdbc.sql("""
@@ -98,5 +101,9 @@ public class SubmissionFormRepository {
 
     private Map<String, Object> object(String json) {
         return json == null ? null : mapper.readValue(json, OBJECT_TYPE);
+    }
+
+    private List<Option> options(String json) {
+        return json == null ? null : mapper.readValue(json, OPTIONS_TYPE);
     }
 }
