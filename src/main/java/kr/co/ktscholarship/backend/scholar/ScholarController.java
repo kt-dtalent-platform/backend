@@ -1,0 +1,45 @@
+package kr.co.ktscholarship.backend.scholar;
+
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import kr.co.ktscholarship.backend.common.exception.BusinessException;
+import kr.co.ktscholarship.backend.common.exception.ErrorCode;
+import kr.co.ktscholarship.backend.common.response.ApiResponse;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class ScholarController {
+
+    private final ScholarRepository repository;
+
+    public ScholarController(ScholarRepository repository) {
+        this.repository = repository;
+    }
+
+    @Operation(summary = "장학생 목록 조회", description = "제출 상태 필터와 인증·담당 범위 연결은 미완료입니다.")
+    @GetMapping(value = "/v1/scholars", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<ScholarListResponse> getScholars(
+        @RequestParam(name = "cohortId", required = false) @Positive Long cohortId,
+        @RequestParam(name = "status", required = false)
+        @Pattern(regexp = "ENROLLED|LEAVE|GRADUATED|WITHDRAWN") String status,
+        @RequestParam(name = "keyword", required = false) String keyword,
+        @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
+        @RequestParam(name = "page_size", defaultValue = "20") @Min(1) @Max(100) int pageSize,
+        HttpServletRequest request
+    ) {
+        if (request.getParameterMap().containsKey("submitStatus")
+            || request.getParameterMap().containsKey("requestId")) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "제출 상태 필터는 명세 확정 후 연결 예정입니다.");
+        }
+        return ApiResponse.success(
+            repository.findAll(cohortId, status, keyword, page, pageSize), request.getRequestURI()
+        );
+    }
+}
