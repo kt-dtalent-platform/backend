@@ -2,6 +2,7 @@ package kr.co.ktscholarship.backend.scholar;
 
 import java.sql.Types;
 import java.util.Objects;
+import kr.co.ktscholarship.backend.common.util.PhoneMasker;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.stereotype.Repository;
@@ -45,22 +46,10 @@ public class ScholarRepository {
             .paramSource(params)
             .query((row, index) -> new ScholarListResponse.Item(
                 row.getLong("id"), row.getString("name"), row.getString("email"),
-                maskPhone(row.getString("phone")), row.getString("cohort_name"),
+                PhoneMasker.mask(row.getString("phone")), row.getString("cohort_name"),
                 row.getString("school_name"), row.getString("scholar_status"),
                 row.getString("account_status")
             )).list();
         return new ScholarListResponse(items, page, pageSize, total);
-    }
-
-    private static String maskPhone(String phone) {
-        if (phone == null) {
-            return null;
-        }
-        String digits = phone.replaceAll("\\D", "");
-        if (digits.length() != 10 && digits.length() != 11) {
-            return "****";
-        }
-        int prefixLength = digits.startsWith("02") ? 2 : 3;
-        return digits.substring(0, prefixLength) + "-****-" + digits.substring(digits.length() - 4);
     }
 }
