@@ -1,5 +1,6 @@
 package kr.co.ktscholarship.backend.auth.jwt;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
@@ -14,4 +15,10 @@ public record JwtProperties(
         @NotNull Duration accessTokenExpiration,
         @NotBlank String issuer
 ) {
+
+    // 0 이하이면 발급 즉시 만료된 토큰이 나가므로 서버 시작 단계에서 막는다
+    @AssertTrue(message = "app.jwt.access-token-expiration은 0보다 커야 합니다")
+    public boolean isAccessTokenExpirationPositive() {
+        return accessTokenExpiration == null || accessTokenExpiration.isPositive();
+    }
 }
