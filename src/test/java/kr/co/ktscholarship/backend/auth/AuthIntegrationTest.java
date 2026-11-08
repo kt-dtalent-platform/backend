@@ -109,6 +109,15 @@ class AuthIntegrationTest {
         }
 
         @Test
+        void 같은_이메일의_계정이_둘이면_500이_아니라_401_LOGIN_FAILED() throws Exception {
+            String hash = passwordEncoder.encode(PASSWORD);
+            insertUser(6L, "dup@kt.com", hash, "중복1", "SCHOLAR", "ACTIVE", false);
+            insertUser(7L, "dup@kt.com", hash, "중복2", "SCHOLAR", "ACTIVE", false);
+
+            expectLoginFailed(login("dup@kt.com", PASSWORD));
+        }
+
+        @Test
         void 비활성_계정은_403_ACCOUNT_DISABLED() throws Exception {
             login("inactive@kt.com", PASSWORD)
                     .andExpect(status().isForbidden())
