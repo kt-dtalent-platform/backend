@@ -15,6 +15,12 @@ Java 21을 설치하고 Docker Desktop을 켜세요.
 cp .env.example .env
 ```
 
+`.env`의 `JWT_SECRET=` 뒤에 아래 명령 결과를 붙여 넣으세요. 기존 `.env`에 이 줄이 없으면 `.env.example`을 보고 추가하세요.
+
+```bash
+openssl rand -base64 32
+```
+
 DB와 서버를 실행하세요.
 
 ```bash
