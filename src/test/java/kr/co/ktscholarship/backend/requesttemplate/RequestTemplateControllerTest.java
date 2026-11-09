@@ -3,6 +3,8 @@ package kr.co.ktscholarship.backend.requesttemplate;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +16,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -35,7 +38,7 @@ class RequestTemplateControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
@@ -46,7 +49,7 @@ class RequestTemplateControllerTest {
                 (115, 'CUSTOM', '사용자 정의', '[]' FORMAT JSON)
             """).update();
 
-        mockMvc.perform(get("/v1/request-templates"))
+        mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.items", hasSize(2)))
@@ -71,7 +74,7 @@ class RequestTemplateControllerTest {
             "validation":{"allowedExtensions":["jpg","png","pdf"],"maxSizeMb":10}}]
             """).update();
 
-        mockMvc.perform(get("/v1/request-templates"))
+        mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.items[0].fields", hasSize(2)))
             .andExpect(jsonPath("$.success.data.items[0].fields[0].fieldKey").value("amount"))
@@ -86,7 +89,7 @@ class RequestTemplateControllerTest {
 
     @Test
     void returnsEmptyArrayWhenNoTemplatesAreStored() throws Exception {
-        mockMvc.perform(get("/v1/request-templates"))
+        mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.items").isArray())
             .andExpect(jsonPath("$.success.data.items").isEmpty());
@@ -100,9 +103,28 @@ class RequestTemplateControllerTest {
             VALUES (103, 'TEST_FIELDS', '검증용', :fields FORMAT JSON)
             """).param("fields", fields).update();
 
-        mockMvc.perform(get("/v1/request-templates"))
+        mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isInternalServerError())
             .andExpect(jsonPath("$.resultType").value("FAIL"))
             .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"));
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequestWithCommon401() throws Exception {
+        mockMvc.perform(get("/v1/request-templates"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/request-templates"));
+    }
+
+    @Test
+    void rejectsScholarRequestWithCommon403() throws Exception {
+        mockMvc.perform(get("/v1/request-templates")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/request-templates"));
     }
 }
