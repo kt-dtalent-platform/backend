@@ -22,7 +22,7 @@ public class ScholarDetailController {
 
     @Operation(
         summary = "장학생 상세 조회",
-        description = "기본 정보·연락처 마스킹·404 구현. 담당자 전용 API입니다. 계좌번호·제출 요약은 미완료입니다.",
+        description = "담당자 전용 API입니다. 제출 요약은 공개된 배정 요청 기준이며 pending은 total - confirmed입니다. 계좌번호는 미구현입니다.",
         responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

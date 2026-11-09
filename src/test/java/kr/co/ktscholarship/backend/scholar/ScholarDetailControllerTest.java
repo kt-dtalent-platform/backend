@@ -131,4 +131,49 @@ class ScholarDetailControllerTest {
             .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
             .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
     }
+    @Test
+    void returnsZeroSummaryWithoutAssignedRequests() throws Exception {
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.submissionSummary.total").value(0))
+            .andExpect(jsonPath("$.success.data.submissionSummary.confirmed").value(0))
+            .andExpect(jsonPath("$.success.data.submissionSummary.pending").value(0));
+    }
+
+    @Test
+    void countsPublishedAssignmentsIncludingUnsubmittedAndAllPendingStates() throws Exception {
+        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'SUMMARY_TEST', '검증', '[]' FORMAT JSON)").update();
+        jdbc.sql("""
+            INSERT INTO requests (id, program_id, template_id, title, academic_year, semester, closes_at, status, created_by, published_at)
+            VALUES (301, 101, 101, '미제출', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (302, 101, 101, '작성 중', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (303, 101, 101, '제출', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (304, 101, 101, '재제출', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (305, 101, 101, '보완', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (306, 101, 101, '확인 완료', 2026, '2', '2026-12-01', 'CLOSED', 204, '2026-11-01'),
+                (307, 101, 101, '공개 전', 2026, '2', '2026-12-01', 'DRAFT', 204, NULL),
+                (308, 101, 101, '공개 기록 없음', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, NULL),
+                (309, 101, 101, '다른 장학생', 2026, '2', '2026-12-01', 'IN_PROGRESS', 204, '2026-11-01'),
+                (310, 101, 101, '마감 미제출', 2026, '2', '2026-12-01', 'CLOSED', 204, '2026-11-01')
+            """).update();
+        jdbc.sql("""
+            INSERT INTO request_targets (id, request_id, scholar_id) VALUES
+                (501,301,201), (502,302,201), (503,303,201), (504,304,201), (505,305,201),
+                (506,306,201), (507,307,201), (508,308,201), (509,309,202), (510,310,201), (511,306,201)
+            """).update();
+        jdbc.sql("""
+            INSERT INTO submissions (id, request_id, scholar_id, status, answers) VALUES
+                (402,302,201,'DRAFT','{}' FORMAT JSON), (403,303,201,'SUBMITTED','{}' FORMAT JSON),
+                (404,304,201,'RESUBMITTED','{}' FORMAT JSON), (405,305,201,'REVISION_REQUIRED','{}' FORMAT JSON),
+                (406,306,201,'CONFIRMED','{}' FORMAT JSON), (407,307,201,'CONFIRMED','{}' FORMAT JSON),
+                (408,308,201,'CONFIRMED','{}' FORMAT JSON), (409,309,202,'CONFIRMED','{}' FORMAT JSON),
+                (410,301,202,'CONFIRMED','{}' FORMAT JSON)
+            """).update();
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.submissionSummary.total").value(7))
+            .andExpect(jsonPath("$.success.data.submissionSummary.confirmed").value(1))
+            .andExpect(jsonPath("$.success.data.submissionSummary.pending").value(6));
+    }
+
 }
