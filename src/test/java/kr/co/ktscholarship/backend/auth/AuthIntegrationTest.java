@@ -34,6 +34,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -224,6 +225,40 @@ class AuthIntegrationTest {
     @Nested
     @DisplayName("내 정보")
     class Me {
+
+        @Test
+        @Transactional
+        void 담당자는_전체_프로그램의_ID와_이름을_조회한다() throws Exception {
+            jdbcTemplate.update("INSERT INTO programs (id, name) VALUES (20, '두 번째 사업'), (10, '첫 번째 사업')");
+            String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
+            String token = com.jayway.jsonpath.JsonPath.read(body, "$.success.data.accessToken");
+
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms.length()").value(2))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[0].id").value(10))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[0].name").value("첫 번째 사업"))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[1].id").value(20))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[1].name").value("두 번째 사업"));
+        }
+
+        @Test
+        void 프로그램이_없으면_담당자에게_빈_배열을_반환한다() throws Exception {
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("1", "MANAGER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").isArray())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").isEmpty());
+        }
+
+        @Test
+        @Transactional
+        void 프로그램이_있어도_장학생에게는_전체_목록을_반환하지_않는다() throws Exception {
+            jdbcTemplate.update("INSERT INTO programs (id, name) VALUES (10, '첫 번째 사업')");
+
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("2", "SCHOLAR")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").value(org.hamcrest.Matchers.nullValue()));
+        }
 
         @Test
         void 로그인으로_받은_토큰으로_내_정보를_조회한다() throws Exception {

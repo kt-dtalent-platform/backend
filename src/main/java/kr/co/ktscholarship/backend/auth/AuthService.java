@@ -8,6 +8,7 @@ import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.user.User;
 import kr.co.ktscholarship.backend.user.UserRepository;
+import kr.co.ktscholarship.backend.user.UserRole;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,17 +25,20 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final MeProgramRepository meProgramRepository;
     // 없는 이메일일 때도 해시 비교를 한 번 수행해 응답 시간 차이를 줄인다
     private final String dummyPasswordHash;
 
     public AuthService(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenProvider jwtTokenProvider
+            JwtTokenProvider jwtTokenProvider,
+            MeProgramRepository meProgramRepository
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.meProgramRepository = meProgramRepository;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
@@ -69,6 +73,6 @@ public class AuthService {
         // 토큰 발급 후 삭제된 계정은 인증 실패로 처리
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
-        return MeResponse.from(user);
+        return MeResponse.from(user, user.getRole() == UserRole.MANAGER ? meProgramRepository.findAll() : null);
     }
 }
