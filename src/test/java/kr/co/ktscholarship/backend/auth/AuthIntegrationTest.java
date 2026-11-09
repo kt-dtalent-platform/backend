@@ -1,5 +1,6 @@
 package kr.co.ktscholarship.backend.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -7,7 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import javax.crypto.spec.SecretKeySpec;
@@ -28,7 +31,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
@@ -59,6 +64,9 @@ class AuthIntegrationTest {
     @Autowired
     private JwtEncoder jwtEncoder;
 
+    @Autowired
+    private JwtDecoder jwtDecoder;
+
     @BeforeEach
     void setUpUsers() {
         String hash = passwordEncoder.encode(PASSWORD);
@@ -87,6 +95,14 @@ class AuthIntegrationTest {
                     .andExpect(jsonPath("$.success.data.role").value("MANAGER"))
                     .andExpect(jsonPath("$.success.data.name").value("담당자"))
                     .andExpect(jsonPath("$.meta.path").value("/v1/auth/login"));
+        }
+
+        @Test
+        void 환경변수가_없으면_토큰_만료는_발급_후_2시간() throws Exception {
+            String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
+            Jwt token = jwtDecoder.decode(JsonPath.read(body, "$.success.data.accessToken"));
+
+            assertThat(Duration.between(token.getIssuedAt(), token.getExpiresAt())).isEqualTo(Duration.ofHours(2));
         }
 
         @Test
