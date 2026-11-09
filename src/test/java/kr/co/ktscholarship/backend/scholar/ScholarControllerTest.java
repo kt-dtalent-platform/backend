@@ -1,6 +1,8 @@
 package kr.co.ktscholarship.backend.scholar;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,6 +14,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -33,7 +36,7 @@ class ScholarControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO programs (id, name) VALUES (101, '프로그램')").update();
         jdbc.sql("INSERT INTO cohorts (id, program_id, name) VALUES (106, 101, '6기'), (107, 101, '7기')")
             .update();
@@ -58,7 +61,7 @@ class ScholarControllerTest {
 
     @Test
     void returnsDefaultPageWithMaskedPhonesAndCommonResponse() throws Exception {
-        mockMvc.perform(get("/v1/scholars"))
+        mockMvc.perform(get("/v1/scholars").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.page").value(1))
@@ -85,7 +88,7 @@ class ScholarControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"홍길동", "hong@example.test"})
     void searchesNameOrEmail(String keyword) throws Exception {
-        mockMvc.perform(get("/v1/scholars").param("keyword", keyword))
+        mockMvc.perform(get("/v1/scholars").param("keyword", keyword).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(1))
             .andExpect(jsonPath("$.success.data.items[0].id").value(201));
@@ -93,7 +96,7 @@ class ScholarControllerTest {
 
     @Test
     void filtersCohortAndCountsBeforePagination() throws Exception {
-        mockMvc.perform(get("/v1/scholars").param("cohortId", "107").param("page_size", "1"))
+        mockMvc.perform(get("/v1/scholars").param("cohortId", "107").param("page_size", "1").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(2))
             .andExpect(jsonPath("$.success.data.items.length()").value(1))
@@ -102,11 +105,11 @@ class ScholarControllerTest {
 
     @Test
     void combinesCohortAndScholarStatusFilters() throws Exception {
-        mockMvc.perform(get("/v1/scholars").param("cohortId", "106").param("status", "LEAVE"))
+        mockMvc.perform(get("/v1/scholars").param("cohortId", "106").param("status", "LEAVE").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(0))
             .andExpect(jsonPath("$.success.data.items").isEmpty());
-        mockMvc.perform(get("/v1/scholars").param("status", "LEAVE"))
+        mockMvc.perform(get("/v1/scholars").param("status", "LEAVE").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(1))
             .andExpect(jsonPath("$.success.data.items[0].id").value(203));
@@ -114,7 +117,7 @@ class ScholarControllerTest {
 
     @Test
     void appliesOneBasedPageWithoutChangingTotal() throws Exception {
-        mockMvc.perform(get("/v1/scholars").param("page", "2").param("page_size", "2"))
+        mockMvc.perform(get("/v1/scholars").param("page", "2").param("page_size", "2").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.page").value(2))
             .andExpect(jsonPath("$.success.data.page_size").value(2))
@@ -125,7 +128,7 @@ class ScholarControllerTest {
 
     @Test
     void treatsSearchWildcardsAsLiteralCharacters() throws Exception {
-        mockMvc.perform(get("/v1/scholars").param("keyword", "%"))
+        mockMvc.perform(get("/v1/scholars").param("keyword", "%").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(1))
             .andExpect(jsonPath("$.success.data.items[0].id").value(202));
@@ -137,9 +140,28 @@ class ScholarControllerTest {
         "submitStatus=NOT_SUBMITTED", "requestId=1"
     })
     void rejectsInvalidOrUnimplementedFilters(String query) throws Exception {
-        mockMvc.perform(get("/v1/scholars?" + query))
+        mockMvc.perform(get("/v1/scholars?" + query).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.resultType").value("FAIL"))
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequestWithCommon401() throws Exception {
+        mockMvc.perform(get("/v1/scholars"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars"));
+    }
+
+    @Test
+    void rejectsScholarRequestWithCommon403() throws Exception {
+        mockMvc.perform(get("/v1/scholars")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars"));
     }
 }

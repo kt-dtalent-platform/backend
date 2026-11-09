@@ -23,7 +23,7 @@ public class ScholarController {
         this.repository = repository;
     }
 
-    @Operation(summary = "장학생 목록 조회", description = "제출 상태 필터와 인증·담당 범위 연결은 미완료입니다.")
+    @Operation(summary = "장학생 목록 조회", description = "담당자는 전체 장학생을 조회합니다. 제출 상태 필터는 명세 확정 후 연결 예정입니다.")
     @GetMapping(value = "/v1/scholars", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<ScholarListResponse> getScholars(
         @RequestParam(name = "cohortId", required = false) @Positive Long cohortId,
