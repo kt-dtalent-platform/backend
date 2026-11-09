@@ -22,7 +22,7 @@ public class ScholarUpdateController {
 
     @Operation(
         summary = "장학생 정보 수정",
-        description = "이름·연락처·학교·전공만 부분 수정합니다. status·명시적 null·인증 및 수정 권한 연결은 미완료입니다."
+        description = "이름·연락처·학교·전공만 부분 수정합니다. 담당자 전용 API입니다. status·명시적 null 처리는 미완료입니다."
     )
     @PatchMapping(value = "/v1/scholars/{scholarId}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<ScholarUpdateResponse> updateScholar(

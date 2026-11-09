@@ -2,6 +2,8 @@ package kr.co.ktscholarship.backend.scholar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -18,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -40,7 +43,7 @@ class ScholarUpdateControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO programs (id, name) VALUES (101, '프로그램')").update();
         jdbc.sql("INSERT INTO cohorts (id, program_id, name) VALUES (106, 101, '6기')").update();
         jdbc.sql("""
@@ -70,7 +73,7 @@ class ScholarUpdateControllerTest {
         LocalDateTime before = LocalDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1);
         mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON).content("""
             {"name":"수정 이름","phone":"010-9876-5432","university":"수정 학교","major":"수정 전공"}
-            """))
+            """).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.id").value(201))
@@ -93,7 +96,7 @@ class ScholarUpdateControllerTest {
     @Test
     void preservesOmittedFieldsAndStatus() throws Exception {
         mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON)
-            .content("{\"phone\":\"010-9876-5432\"}"))
+            .content("{\"phone\":\"010-9876-5432\"}").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk());
 
         assertThat(jdbc.sql("SELECT name FROM users WHERE id = 201").query(String.class).single())
@@ -119,7 +122,7 @@ class ScholarUpdateControllerTest {
     @ValueSource(longs = {999, 203, 204})
     void rejectsMissingDeletedOrNonScholarAccounts(long id) throws Exception {
         mockMvc.perform(patch("/v1/scholars/{id}", id).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"name\":\"수정 이름\"}"))
+            .content("{\"name\":\"수정 이름\"}").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.error.code").value("SCHOLAR_NOT_FOUND"));
     }
@@ -129,7 +132,7 @@ class ScholarUpdateControllerTest {
         "{\"status\":\"LEAVE\"}", "{\"email\":\"new@example.test\"}",
         "{\"name\":\"수정 이름\",\"major\":null}", "{\"name\":\"\"}", "{\"university\":\"\"}"})
     void rejectsUnsupportedOrInvalidBodiesWithoutChanges(String body) throws Exception {
-        mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON).content(body).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
 
@@ -140,7 +143,7 @@ class ScholarUpdateControllerTest {
     @Test
     void rejectsValuesExceedingDatabaseLength() throws Exception {
         mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON)
-            .content("{\"name\":\"수정 이름\",\"phone\":\"" + "1".repeat(21) + "\"}"))
+            .content("{\"name\":\"수정 이름\",\"phone\":\"" + "1".repeat(21) + "\"}").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
@@ -149,8 +152,27 @@ class ScholarUpdateControllerTest {
     @ValueSource(strings = {"0", "-1", "abc"})
     void rejectsInvalidIds(String id) throws Exception {
         mockMvc.perform(patch("/v1/scholars/" + id).contentType(MediaType.APPLICATION_JSON)
-            .content("{\"name\":\"수정 이름\"}"))
+            .content("{\"name\":\"수정 이름\"}").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequestWithCommon401() throws Exception {
+        mockMvc.perform(patch("/v1/scholars/201"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
+    }
+
+    @Test
+    void rejectsScholarRequestWithCommon403() throws Exception {
+        mockMvc.perform(patch("/v1/scholars/201")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
     }
 }
