@@ -122,4 +122,32 @@ class MyTaskRepositoryTest {
     void returnsNoTasksWithoutTargets() {
         assertThat(repository.find(999, Filter.ALL, Sort.DUE_ASC)).isEmpty();
     }
+    @Test
+    void selectsLatestUnresolvedRevisionByRequestedAtThenId() {
+        jdbc.sql("UPDATE revision_requests SET requested_at = '2026-11-01' WHERE id = 301").update();
+        jdbc.sql("""
+            INSERT INTO revision_requests (id, submission_id, reason, requested_by, requested_at, resolved_at) VALUES
+                (305,202,'최신 보완',10,'2026-11-03',NULL),
+                (306,202,'동일 시각 최신 ID',10,'2026-11-03',NULL),
+                (307,202,'ID만 큰 과거 요청',10,'2026-11-02',NULL),
+                (308,202,'해결된 최신 요청',10,'2026-11-04','2026-11-05')
+            """).update();
+
+        var revision = repository.find(101, Filter.TODO, Sort.DUE_ASC).stream()
+            .filter(task -> task.requestId() == 33).findFirst().orElseThrow();
+
+        assertThat(revision.revisionReason()).isEqualTo("동일 시각 최신 ID");
+    }
+
+    @Test
+    void omitsReasonWhenNoUnresolvedRevisionRemains() {
+        jdbc.sql("UPDATE revision_requests SET resolved_at = '2026-11-05' WHERE submission_id = 202").update();
+
+        var revision = repository.find(101, Filter.TODO, Sort.DUE_ASC).stream()
+            .filter(task -> task.requestId() == 33).findFirst().orElseThrow();
+
+        assertThat(revision.status()).isEqualTo("REVISION_REQUIRED");
+        assertThat(revision.revisionReason()).isNull();
+    }
+
 }

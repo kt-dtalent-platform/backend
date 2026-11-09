@@ -28,6 +28,7 @@ public class MyTaskRepository {
                 CASE WHEN s.status = 'REVISION_REQUIRED' THEN (
                     SELECT rr.reason FROM revision_requests rr
                     WHERE rr.submission_id = s.id AND rr.resolved_at IS NULL
+                    ORDER BY rr.requested_at DESC, rr.id DESC LIMIT 1
                 ) END AS revision_reason
             FROM requests r
             LEFT JOIN submissions s ON s.request_id = r.id AND s.scholar_id = :scholarId
