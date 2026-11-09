@@ -20,6 +20,10 @@ public class CohortController {
     @Operation(summary = "기수 목록 조회", responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401", description = "UNAUTHORIZED - 인증 정보가 없거나 만료되었습니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403", description = "ACCESS_DENIED - 담당자 권한이 필요합니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404", description = "PROGRAM_NOT_FOUND - 프로그램을 찾을 수 없습니다.")
     })
     @GetMapping(value = "/v1/programs/{programId}/cohorts", produces = MediaType.APPLICATION_JSON_VALUE)

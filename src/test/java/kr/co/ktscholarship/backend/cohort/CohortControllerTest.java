@@ -1,33 +1,42 @@
 package kr.co.ktscholarship.backend.cohort;
 
 import static org.hamcrest.Matchers.nullValue;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
 import java.util.List;
-import kr.co.ktscholarship.backend.common.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
+@SpringBootTest
+@ActiveProfiles("test")
 class CohortControllerTest {
 
-    private final CohortRepository repository = mock(CohortRepository.class);
+    @MockitoBean
+    private CohortRepository repository;
+
+    @Autowired
+    private WebApplicationContext context;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new CohortController(new CohortService(repository)))
-                .setControllerAdvice(new GlobalExceptionHandler())
-                .build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
@@ -37,7 +46,7 @@ class CohortControllerTest {
                 new CohortItem(6, "6기", LocalDate.of(2026, 3, 1), null, 47)
         ));
 
-        mockMvc.perform(get("/v1/programs/1/cohorts"))
+        mockMvc.perform(get("/v1/programs/1/cohorts").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resultType").value("SUCCESS"))
                 .andExpect(jsonPath("$.success.data.items.length()").value(1))
@@ -53,7 +62,7 @@ class CohortControllerTest {
 
     @Test
     void rejectsMissingProgramBeforeQueryingCohorts() throws Exception {
-        mockMvc.perform(get("/v1/programs/999/cohorts"))
+        mockMvc.perform(get("/v1/programs/999/cohorts").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.resultType").value("FAIL"))
                 .andExpect(jsonPath("$.success").value(nullValue()))
@@ -63,5 +72,24 @@ class CohortControllerTest {
 
         verify(repository).existsProgram(999);
         verifyNoMoreInteractions(repository);
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequestWithCommon401() throws Exception {
+        mockMvc.perform(get("/v1/programs/1/cohorts"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/programs/1/cohorts"));
+    }
+
+    @Test
+    void rejectsScholarRequestWithCommon403() throws Exception {
+        mockMvc.perform(get("/v1/programs/1/cohorts")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/programs/1/cohorts"));
     }
 }
