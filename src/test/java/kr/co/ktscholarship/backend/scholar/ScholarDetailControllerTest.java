@@ -1,6 +1,8 @@
 package kr.co.ktscholarship.backend.scholar;
 
 import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -13,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -34,7 +37,7 @@ class ScholarDetailControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO programs (id, name) VALUES (101, '프로그램')").update();
         jdbc.sql("INSERT INTO cohorts (id, program_id, name) VALUES (106, 101, '6기')").update();
         jdbc.sql("""
@@ -55,7 +58,7 @@ class ScholarDetailControllerTest {
 
     @Test
     void returnsBasicDetailsWithMaskedPhoneAndCommonResponse() throws Exception {
-        mockMvc.perform(get("/v1/scholars/201"))
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.id").value(201))
@@ -74,7 +77,7 @@ class ScholarDetailControllerTest {
 
     @Test
     void keepsNullablePhoneAndMajor() throws Exception {
-        mockMvc.perform(get("/v1/scholars/202"))
+        mockMvc.perform(get("/v1/scholars/202").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.maskedPhone").value(nullValue()))
             .andExpect(jsonPath("$.success.data.major").value(nullValue()));
@@ -86,7 +89,7 @@ class ScholarDetailControllerTest {
         jdbc.sql("UPDATE scholar_profiles SET phone = :phone WHERE user_id = 201")
             .param("phone", phone).update();
 
-        mockMvc.perform(get("/v1/scholars/201"))
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.maskedPhone").value(expected));
     }
@@ -94,7 +97,7 @@ class ScholarDetailControllerTest {
     @ParameterizedTest
     @ValueSource(longs = {999, 203, 204})
     void rejectsMissingDeletedOrNonScholarAccounts(long id) throws Exception {
-        mockMvc.perform(get("/v1/scholars/{scholarId}", id))
+        mockMvc.perform(get("/v1/scholars/{scholarId}", id).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.resultType").value("FAIL"))
             .andExpect(jsonPath("$.success").value(nullValue()))
@@ -105,8 +108,27 @@ class ScholarDetailControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"0", "-1", "abc"})
     void rejectsInvalidIds(String id) throws Exception {
-        mockMvc.perform(get("/v1/scholars/" + id))
+        mockMvc.perform(get("/v1/scholars/" + id).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void rejectsUnauthenticatedRequestWithCommon401() throws Exception {
+        mockMvc.perform(get("/v1/scholars/201"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
+    }
+
+    @Test
+    void rejectsScholarRequestWithCommon403() throws Exception {
+        mockMvc.perform(get("/v1/scholars/201")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.resultType").value("FAIL"))
+            .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
+            .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
     }
 }
