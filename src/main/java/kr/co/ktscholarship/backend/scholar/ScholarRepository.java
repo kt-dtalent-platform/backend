@@ -18,6 +18,16 @@ public class ScholarRepository {
         WHERE u.role = 'SCHOLAR' AND u.deleted_at IS NULL
             AND (:cohortId IS NULL OR s.cohort_id = :cohortId)
             AND (:status IS NULL OR s.status = :status)
+            AND (:requestId IS NULL OR (
+                EXISTS (SELECT 1 FROM request_targets t
+                    WHERE t.request_id = :requestId AND t.scholar_id = u.id)
+                AND ((:submitStatus = 'NOT_SUBMITTED' AND NOT EXISTS (
+                    SELECT 1 FROM submissions sub WHERE sub.request_id = :requestId AND sub.scholar_id = u.id
+                )) OR EXISTS (
+                    SELECT 1 FROM submissions sub WHERE sub.request_id = :requestId AND sub.scholar_id = u.id
+                        AND CONCAT('', sub.status) = :submitStatus
+                ))
+            ))
             AND (:keyword IS NULL OR LOCATE(:keyword, u.name) > 0 OR LOCATE(:keyword, u.email) > 0)
         """;
 
@@ -28,8 +38,12 @@ public class ScholarRepository {
     }
 
     @Transactional(readOnly = true)
-    public ScholarListResponse findAll(Long cohortId, String status, String keyword, int page, int pageSize) {
+    public ScholarListResponse findAll(
+        Long cohortId, String status, String keyword, Long requestId, String submitStatus, int page, int pageSize
+    ) {
         var params = new MapSqlParameterSource()
+            .addValue("requestId", requestId, Types.BIGINT)
+            .addValue("submitStatus", submitStatus, Types.VARCHAR)
             .addValue("cohortId", cohortId, Types.BIGINT)
             .addValue("status", status, Types.VARCHAR)
             .addValue("keyword", keyword == null || keyword.isBlank() ? null : keyword, Types.VARCHAR);

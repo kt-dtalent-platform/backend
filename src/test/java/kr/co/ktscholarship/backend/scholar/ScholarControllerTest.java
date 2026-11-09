@@ -137,9 +137,10 @@ class ScholarControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {
         "page=0", "page=-1", "page_size=0", "page_size=101", "page=abc", "cohortId=0", "status=UNKNOWN",
-        "submitStatus=NOT_SUBMITTED", "requestId=1"
+        "submitStatus=NOT_SUBMITTED", "requestId=1", "requestId=1&submitStatus=UNKNOWN",
+        "requestId=0&submitStatus=DRAFT"
     })
-    void rejectsInvalidOrUnimplementedFilters(String query) throws Exception {
+    void rejectsInvalidFilters(String query) throws Exception {
         mockMvc.perform(get("/v1/scholars?" + query).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.resultType").value("FAIL"))
@@ -164,4 +165,64 @@ class ScholarControllerTest {
             .andExpect(jsonPath("$.error.code").value("ACCESS_DENIED"))
             .andExpect(jsonPath("$.meta.path").value("/v1/scholars"));
     }
+    @ParameterizedTest
+    @ValueSource(strings = {"NOT_SUBMITTED", "DRAFT", "SUBMITTED", "RESUBMITTED", "REVISION_REQUIRED", "CONFIRMED"})
+    void filtersAllSixSubmissionStatesWithinRequestTargets(String submitStatus) throws Exception {
+        addRequestTargets();
+        if (!submitStatus.equals("NOT_SUBMITTED")) {
+            jdbc.sql("""
+                INSERT INTO submissions (id, request_id, scholar_id, status, answers)
+                VALUES (401, 301, 201, :status, '{}' FORMAT JSON),
+                    (402, 301, 202, :status, '{}' FORMAT JSON),
+                    (403, 302, 203, :status, '{}' FORMAT JSON)
+                """).param("status", submitStatus).update();
+        }
+        mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", submitStatus)
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.total").value(1))
+            .andExpect(jsonPath("$.success.data.items.length()").value(1))
+            .andExpect(jsonPath("$.success.data.items[0].id").value(201));
+    }
+
+    @Test
+    void submissionFilterCombinesWithSearchCohortAndPagination() throws Exception {
+        addRequestTargets();
+        jdbc.sql("INSERT INTO request_targets (id, request_id, scholar_id) VALUES (505, 301, 202)").update();
+        mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", "NOT_SUBMITTED")
+                .param("cohortId", "106").param("status", "ENROLLED").param("page_size", "1").param("page", "2")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.total").value(2))
+            .andExpect(jsonPath("$.success.data.items[0].id").value(202));
+        mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", "NOT_SUBMITTED")
+                .param("keyword", "홍길동").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.total").value(1))
+            .andExpect(jsonPath("$.success.data.items[0].id").value(201));
+    }
+
+    @Test
+    void missingRequestOrUnmatchedSubmissionStateReturnsEmptyList() throws Exception {
+        addRequestTargets();
+        for (String requestId : new String[]{"301", "999"}) {
+            mockMvc.perform(get("/v1/scholars").param("requestId", requestId).param("submitStatus", "CONFIRMED")
+                    .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.total").value(0))
+                .andExpect(jsonPath("$.success.data.items").isEmpty());
+        }
+    }
+
+    private void addRequestTargets() {
+        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'FILTER_TEST', '검증', '[]' FORMAT JSON)").update();
+        jdbc.sql("""
+            INSERT INTO requests (id, program_id, template_id, title, academic_year, semester, closes_at, status, created_by, published_at)
+            VALUES (301, 101, 101, '필터 대상', 2026, '2', '2026-12-01', 'IN_PROGRESS', 206, '2026-11-01'),
+                (302, 101, 101, '다른 요청', 2026, '2', '2026-12-01', 'IN_PROGRESS', 206, '2026-11-01')
+            """).update();
+        jdbc.sql("""
+            INSERT INTO request_targets (id, request_id, scholar_id) VALUES
+                (501, 301, 201), (502, 301, 201), (503, 301, 205), (504, 302, 203)
+            """).update();
+    }
+
 }
