@@ -75,6 +75,36 @@ class SubmissionFormControllerTest {
     }
 
     @Test
+    void isolatesFilesAndRevisionDetailsByTokenOwner() throws Exception {
+        jdbc.sql("UPDATE submissions SET status = 'REVISION_REQUIRED' WHERE id IN (951,952)").update();
+        jdbc.sql("""
+            INSERT INTO submission_files
+                (id,submission_id,field_key,s3_key,original_name,content_type,size_bytes,upload_status)
+            VALUES (961,951,'own_file','private/own','own.pdf','application/pdf',100,'UPLOADED'),
+                (962,952,'other_file','private/other','other.pdf','application/pdf',100,'UPLOADED')
+            """).update();
+        jdbc.sql("""
+            INSERT INTO revision_requests (id,submission_id,reason,requested_by)
+            VALUES (971,951,'본인 보완 사유',910),(972,952,'다른 학생 보완 사유',910)
+            """).update();
+        jdbc.sql("""
+            INSERT INTO revision_request_fields (id,revision_request_id,field_key)
+            VALUES (981,971,'own_file'),(982,972,'other_file')
+            """).update();
+
+        mvc.perform(get("/v1/me/submissions/931?scholarId=912").with(scholar(911)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.files.length()").value(1))
+            .andExpect(jsonPath("$.success.data.files[0].id").value(961))
+            .andExpect(jsonPath("$.success.data.files[0].originalName").value("own.pdf"))
+            .andExpect(jsonPath("$.success.data.files[0].s3Key").doesNotExist())
+            .andExpect(jsonPath("$.success.data.files[0].s3_key").doesNotExist())
+            .andExpect(jsonPath("$.success.data.revision.reason").value("본인 보완 사유"))
+            .andExpect(jsonPath("$.success.data.revision.fieldKeys.length()").value(1))
+            .andExpect(jsonPath("$.success.data.revision.fieldKeys[0]").value("own_file"));
+    }
+
+    @Test
     void rejectsRequestsOutsideOwnTargets() throws Exception {
         mvc.perform(get("/v1/me/submissions/933?scholarId=912").with(scholar(911)))
             .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("NOT_A_TARGET"));
