@@ -59,15 +59,17 @@ docker compose stop
 | 항목 | 내용 |
 | --- | --- |
 | 사용 기술 | Java 21 · Spring Boot 4.1.2 · Gradle · MySQL 8.0 |
-| DB 생성 파일 | `src/main/resources/db/migration/V1__create_initial_schema.sql` |
+| DB 생성 파일 | `src/main/resources/db/migration/` (V1 테이블 생성, V2 자동 증가·중복 방지) |
 | 현재 DB | 기존 ERD의 테이블 16개 · 컬럼 143개 · FK 23개 |
 | DB 변경 | 적용된 SQL은 수정하지 않고 `V2__설명.sql`처럼 새 파일 추가 |
-| ID 생성 | 자동 증가 없음. 엔티티 작성 전 생성 방식 확정 필요 |
+| ID 생성 | DB 자동 증가(AUTO_INCREMENT). 엔티티는 `@GeneratedValue(strategy = GenerationType.IDENTITY)` |
 | DB 포트 변경 | `.env`의 `DB_PORT` 변경 |
 | 외부 DB 사용 | `DB_URL` 환경변수 지정 |
 | 접속 범위 | 기본적으로 내 컴퓨터에서만 접속 가능 (`127.0.0.1`) |
 | 시간 저장 기준 | UTC |
 
-원본 ERD 구조는 유지했습니다. 기본키 외 UNIQUE와 추가 삭제 정책은 넣지 않았습니다.
+원본 ERD 구조는 유지했습니다. 업무 중복 방지 UNIQUE 8개는 V2에서 추가했습니다.
+
+서버 시작 시 `Validate failed: Migrations have failed validation`이 나오면, 예전 브랜치(`chore/backend-setup`)의 V2 기록이 로컬 DB에 남아 있는 경우입니다. `docker compose down -v`로 로컬 DB를 지우고 다시 실행하세요. DB 데이터가 모두 삭제됩니다.
 DB 변경 이력은 Flyway가 관리하며, JPA는 테이블을 자동 수정하지 않습니다.
 다운로드 오류 대응을 위해 Google 제공 Maven Central 미러를 우선 사용합니다.
