@@ -150,4 +150,10 @@ class MyTaskRepositoryTest {
         assertThat(revision.revisionReason()).isNull();
     }
 
+    @Test
+    void doneIncludesSubmittedResubmittedAndConfirmedRequests() {
+        assertThat(repository.find(101, Filter.DONE, Sort.DUE_ASC))
+            .extracting(TaskRow::requestId).containsExactly(34L, 35L, 36L);
+    }
+
 }

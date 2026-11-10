@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MyTaskRepository {
 
-    public enum Filter { TODO, ALL }
+    public enum Filter { TODO, DONE, ALL }
     public enum Sort { DUE_ASC, CREATED_DESC }
 
     // API 응답 연결 전 내부 조회 결과이며, requestDueAt은 개별 연장을 적용하기 전 공통 마감일입니다.
@@ -38,12 +38,14 @@ public class MyTaskRepository {
                     WHERE t.request_id = r.id AND t.scholar_id = :scholarId
                 )
                 AND (:todoOnly = FALSE OR s.id IS NULL OR s.status IN ('DRAFT', 'REVISION_REQUIRED'))
+                AND (:doneOnly = FALSE OR s.status IN ('SUBMITTED', 'RESUBMITTED', 'CONFIRMED'))
             ORDER BY
                 CASE WHEN :createdDesc THEN r.created_at END DESC,
                 CASE WHEN NOT :createdDesc THEN r.closes_at END ASC
             """)
             .param("scholarId", scholarId)
             .param("todoOnly", filter == null || filter == Filter.TODO)
+            .param("doneOnly", filter == Filter.DONE)
             .param("createdDesc", sort == Sort.CREATED_DESC)
             .query((row, index) -> new TaskRow(
                 row.getLong("id"), row.getString("title"), row.getObject("closes_at", LocalDateTime.class),
