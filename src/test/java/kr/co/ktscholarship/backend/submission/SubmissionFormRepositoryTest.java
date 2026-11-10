@@ -220,12 +220,21 @@ class SubmissionFormRepositoryTest {
     }
 
     @Test
-    void rejectsAmbiguousOpenRevisions() {
+    void selectsLatestUnresolvedRevisionAndItsOwnFieldKeys() {
+        jdbc.sql("UPDATE revision_requests SET requested_at = '2026-11-01' WHERE id = 401").update();
         jdbc.sql("""
-            INSERT INTO revision_requests (id, submission_id, reason, requested_by)
-            VALUES (405, 201, '중복 보완 요청', 10)
+            INSERT INTO revision_requests (id, submission_id, reason, requested_by, requested_at, resolved_at) VALUES
+                (405,201,'최신 보완',10,'2026-11-03',NULL),
+                (406,201,'동일 시각 최신 ID',10,'2026-11-03',NULL),
+                (407,201,'ID만 큰 과거 요청',10,'2026-11-02',NULL),
+                (408,201,'해결된 최신 요청',10,'2026-11-04','2026-11-05')
             """).update();
+        jdbc.sql("INSERT INTO revision_request_fields (id, revision_request_id, field_key) VALUES (504,406,'test_number')").update();
 
-        assertThatThrownBy(() -> repository.find(31, 101)).isInstanceOf(IncorrectResultSizeDataAccessException.class);
+        var revision = repository.find(31, 101).revision();
+
+        assertThat(revision.id()).isEqualTo(406);
+        assertThat(revision.reason()).isEqualTo("동일 시각 최신 ID");
+        assertThat(revision.fieldKeys()).containsExactly("test_number");
     }
 }

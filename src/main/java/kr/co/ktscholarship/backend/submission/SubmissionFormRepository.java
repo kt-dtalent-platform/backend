@@ -87,6 +87,7 @@ public class SubmissionFormRepository {
         if (submission.status().equals("REVISION_REQUIRED")) {
             revision = jdbc.sql("""
                 SELECT id, reason FROM revision_requests WHERE submission_id = :id AND resolved_at IS NULL
+                ORDER BY requested_at DESC, id DESC LIMIT 1
                 """).param("id", submission.id())
                 .query((row, index) -> new Revision(row.getLong("id"), row.getString("reason"), List.of()))
                 .optional().orElse(null);
