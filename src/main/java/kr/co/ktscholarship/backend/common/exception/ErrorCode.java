@@ -3,6 +3,7 @@ package kr.co.ktscholarship.backend.common.exception;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
+    DUPLICATE_EMAIL(HttpStatus.CONFLICT, "DUPLICATE_EMAIL", "이미 등록된 이메일입니다."),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "요청 값이 올바르지 않습니다."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다."),
     SCHOLAR_NOT_FOUND(HttpStatus.NOT_FOUND, "SCHOLAR_NOT_FOUND", "장학생을 찾을 수 없습니다."),
