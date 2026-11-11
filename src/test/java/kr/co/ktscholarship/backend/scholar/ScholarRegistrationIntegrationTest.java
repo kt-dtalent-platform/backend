@@ -51,6 +51,53 @@ class ScholarRegistrationIntegrationTest {
     }
 
     @Test
+    void createsLoginReadyAccountAndProfileAndReturnsPasswordOnlyOnce() throws Exception {
+        var response = mvc.perform(post("/v1/scholars").contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {"cohortId":706,"name":"등록 학생","email":"registration-success@example.test",
+                 "university":"학교","phone":"010-1234-5678","major":"전공","studentNo":"1234"}
+                """).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isCreated()).andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.success.data.accountStatus").value("ACTIVE"))
+            .andReturn().getResponse();
+        var data = mapper.readTree(response.getContentAsString()).path("success").path("data");
+        long id = data.path("id").asLong();
+        String password = data.path("temporaryPassword").asText();
+        assertThat(password).hasSize(24);
+        assertThat(response.getHeader("Location")).isEqualTo("/v1/scholars/" + id);
+        String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id=?",String.class,id);
+        assertThat(hash).isNotEqualTo(password);
+        assertThat(encoder.matches(password, hash)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT password_change_required FROM users WHERE id=?",Boolean.class,id)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT school_name FROM scholar_profiles WHERE user_id=?",String.class,id)).isEqualTo("학교");
+        mvc.perform(post("/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"email\":\"registration-success@example.test\",\"password\":\"" + password + "\"}"))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void duplicateAcrossCohortsIs409ButDeletedEmailCanBeReused() throws Exception {
+        var first = service.register(request(706,"registration-reuse@example.test","학교"));
+        mvc.perform(post("/v1/scholars").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"cohortId\":707,\"name\":\"학생\",\"email\":\"registration-reuse@example.test\",\"university\":\"학교\"}")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("DUPLICATE_EMAIL"));
+        jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", first.id());
+        var second = service.register(request(707,"registration-reuse@example.test","학교"));
+        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(second.temporaryPassword()).isNotEqualTo(first.temporaryPassword());
+    }
+
+    @Test
+    void blankUniversityIs400WithoutCreatingAccount() throws Exception {
+        mvc.perform(post("/v1/scholars").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"cohortId\":706,\"name\":\"학생\",\"email\":\"registration-invalid@example.test\",\"university\":\" \"}")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE email='registration-invalid@example.test'",Long.class)).isZero();
+    }
+
+    @Test
     void profileFailureRollsBackAccountAndUnknownCohortCreatesNothing() {
         assertThatThrownBy(() -> service.register(request(706,"registration-rollback@example.test",null)))
             .isInstanceOf(DataIntegrityViolationException.class);
