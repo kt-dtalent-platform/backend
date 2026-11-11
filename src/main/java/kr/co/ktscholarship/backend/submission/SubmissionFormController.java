@@ -12,10 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class SubmissionFormController {
 
-    private final SubmissionFormRepository repository;
+    private final SubmissionFormService service;
 
-    public SubmissionFormController(SubmissionFormRepository repository) {
-        this.repository = repository;
+    public SubmissionFormController(SubmissionFormService service) {
+        this.service = service;
     }
 
     @Operation(summary = "내 제출 폼 기본 조회", description = "토큰의 사용자 ID로 본인 폼을 조회합니다. 기존 중첩 조회 모델을 반환하며 최종 응답 계약·개인정보 안내문·보완 기한은 별도 확인 중입니다.")
@@ -25,6 +25,6 @@ public class SubmissionFormController {
         @CurrentUserId Long userId,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(repository.find(requestId, userId), request.getRequestURI());
+        return ApiResponse.success(service.find(requestId, userId), request.getRequestURI());
     }
 }

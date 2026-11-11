@@ -27,7 +27,7 @@ class SubmissionFormRepositoryTest {
     private JdbcClient jdbc;
 
     @Autowired
-    private SubmissionFormRepository repository;
+    private SubmissionFormService repository;
 
     @Autowired
     private JsonMapper mapper;
