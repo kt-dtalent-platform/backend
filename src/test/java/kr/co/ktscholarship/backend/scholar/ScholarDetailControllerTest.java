@@ -159,7 +159,7 @@ class ScholarDetailControllerTest {
         jdbc.sql("""
             INSERT INTO request_targets (id, request_id, scholar_id) VALUES
                 (501,301,201), (502,302,201), (503,303,201), (504,304,201), (505,305,201),
-                (506,306,201), (507,307,201), (508,308,201), (509,309,202), (510,310,201), (511,306,201)
+                (506,306,201), (507,307,201), (508,308,201), (509,309,202), (510,310,201)
             """).update();
         jdbc.sql("""
             INSERT INTO submissions (id, request_id, scholar_id, status, answers) VALUES
