@@ -48,7 +48,7 @@ class CohortRepositoryTest {
 
     @Test
     void returnsProgramCohortsWithScholarCountsAndNullableDates() {
-        assertThat(repository.findByProgramId(101)).containsExactlyInAnyOrder(
+        assertThat(repository.findByProgramId(101)).containsExactly(
                 new CohortItem(105, "5기", LocalDate.of(2025, 3, 1), LocalDate.of(2026, 2, 28), 2),
                 new CohortItem(106, "6기", null, null, 0)
         );
@@ -64,5 +64,14 @@ class CohortRepositoryTest {
         assertThat(repository.existsProgram(101)).isTrue();
         assertThat(repository.existsProgram(103)).isTrue();
         assertThat(repository.existsProgram(999)).isFalse();
+    }
+    @Test
+    void excludesDeletedScholarsWithoutDroppingTheirCohort() {
+        jdbc.sql("UPDATE users SET deleted_at = '2026-11-01' WHERE id = 201").update();
+        assertThat(repository.findByProgramId(101)).extracting(CohortItem::scholarCount)
+            .containsExactly(1L, 0L);
+        jdbc.sql("UPDATE users SET deleted_at = '2026-11-01' WHERE id = 202").update();
+        assertThat(repository.findByProgramId(101)).extracting(CohortItem::scholarCount)
+            .containsExactly(0L, 0L);
     }
 }

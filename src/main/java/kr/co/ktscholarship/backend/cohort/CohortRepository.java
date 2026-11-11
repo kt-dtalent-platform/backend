@@ -22,11 +22,13 @@ public class CohortRepository {
     public List<CohortItem> findByProgramId(long programId) {
         return jdbc.sql("""
                 SELECT c.id, c.name, c.started_on AS startedOn, c.ended_on AS endedOn,
-                        COUNT(s.user_id) AS scholarCount
+                        COUNT(u.id) AS scholarCount
                 FROM cohorts c
                 LEFT JOIN scholar_profiles s ON s.cohort_id = c.id
+                LEFT JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL AND u.role = 'SCHOLAR'
                 WHERE c.program_id = :programId
                 GROUP BY c.id, c.name, c.started_on, c.ended_on
+                ORDER BY c.id ASC
                 """)
                 .param("programId", programId)
                 .query(CohortItem.class).list();
