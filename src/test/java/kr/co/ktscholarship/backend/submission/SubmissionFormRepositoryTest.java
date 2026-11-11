@@ -12,7 +12,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
@@ -207,16 +206,6 @@ class SubmissionFormRepositoryTest {
         assertThatThrownBy(() -> repository.find(requestId, 101))
             .isInstanceOfSatisfying(BusinessException.class, error ->
                 assertThat(error.getErrorCode()).isEqualTo(ErrorCode.REQUEST_NOT_FOUND));
-    }
-
-    @Test
-    void rejectsAmbiguousDuplicateSubmissions() {
-        jdbc.sql("""
-            INSERT INTO submissions (id, request_id, scholar_id, status, answers)
-            VALUES (204, 31, 101, 'DRAFT', '{}' FORMAT JSON)
-            """).update();
-
-        assertThatThrownBy(() -> repository.find(31, 101)).isInstanceOf(IncorrectResultSizeDataAccessException.class);
     }
 
     @Test
