@@ -221,7 +221,7 @@ class ScholarControllerTest {
             """).update();
         jdbc.sql("""
             INSERT INTO request_targets (id, request_id, scholar_id) VALUES
-                (501, 301, 201), (502, 301, 201), (503, 301, 205), (504, 302, 203)
+                (501, 301, 201), (503, 301, 205), (504, 302, 203)
             """).update();
     }
 
