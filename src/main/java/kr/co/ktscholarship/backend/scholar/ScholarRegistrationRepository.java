@@ -21,6 +21,22 @@ class ScholarRegistrationRepository {
         this.jdbc = jdbc;
     }
 
+    public boolean cohortExists(long cohortId) {
+        return jdbc.sql("SELECT COUNT(*) FROM cohorts WHERE id = :id")
+            .param("id", cohortId).query(Long.class).single() > 0;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void insertProfile(long userId, ScholarCreateRequest request) {
+        jdbc.sql("""
+                INSERT INTO scholar_profiles (user_id, cohort_id, school_name, phone, major, student_no)
+                VALUES (:userId, :cohortId, :school, :phone, :major, :studentNo)
+                """)
+            .param("userId", userId).param("cohortId", request.cohortId())
+            .param("school", request.university()).param("phone", request.phone())
+            .param("major", request.major()).param("studentNo", request.studentNo()).update();
+    }
+
     // 계정과 프로필을 함께 저장하는 등록 트랜잭션에서만 호출한다.
     @Transactional(propagation = Propagation.MANDATORY)
     public long insertAccount(String name, String email, String passwordHash, UserStatus status) {
