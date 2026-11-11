@@ -63,7 +63,8 @@ class SubmissionFormControllerTest {
     @Test
     void returnsOnlyTokenOwnersSubmissionEvenWithAnotherScholarId() throws Exception {
         mvc.perform(get("/v1/me/submissions/931?scholarId=912&userId=912").with(scholar(911)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.resultType").value("SUCCESS"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.request.requestDueAt").value("2026-12-01T00:00:00Z")).andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.request.id").value(931))
             .andExpect(jsonPath("$.success.data.submission.id").value(951))
             .andExpect(jsonPath("$.success.data.submission.answers.value").value("본인 입력"))

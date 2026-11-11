@@ -1,6 +1,6 @@
 package kr.co.ktscholarship.backend.submission;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -8,7 +8,7 @@ import java.util.Map;
 public record SubmissionFormData(
     Request request, List<Field> fields, Submission submission, List<File> files, Revision revision
 ) {
-    public record Request(long id, String title, String description, LocalDateTime requestDueAt, String status) {
+    public record Request(long id, String title, String description, Instant requestDueAt, String status) {
     }
 
     public record Field(

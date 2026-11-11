@@ -107,7 +107,7 @@ class SubmissionFormRepositoryTest {
         assertThat(data.request().id()).isEqualTo(31);
         assertThat(data.request().title()).isEqualTo("성적증명서 제출 검증");
         assertThat(data.request().description()).isEqualTo("검증 안내");
-        assertThat(data.request().requestDueAt()).isEqualTo(LocalDateTime.of(2026, 11, 10, 0, 0));
+        assertThat(data.request().requestDueAt()).isEqualTo(java.time.Instant.parse("2026-11-10T00:00:00Z"));
         assertThat(data.fields()).extracting(SubmissionFormData.Field::fieldKey)
             .containsExactly("test_number", "test_file");
         assertThat(data.fields().getFirst().validation()).containsEntry("min", 0);

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Field;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.File;
 import kr.co.ktscholarship.backend.submission.SubmissionFormData.Option;
@@ -37,7 +38,7 @@ public class SubmissionFormRepository {
             """).param("id", requestId)
             .query((row, index) -> new Request(
                 row.getLong("id"), row.getString("title"), row.getString("description"),
-                row.getObject("closes_at", LocalDateTime.class), row.getString("status")
+                UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class)), row.getString("status")
             )).optional();
     }
 
