@@ -25,6 +25,7 @@ public class ScholarRepository {
                     SELECT 1 FROM submissions sub WHERE sub.request_id = :requestId AND sub.scholar_id = u.id
                 )) OR EXISTS (
                     SELECT 1 FROM submissions sub WHERE sub.request_id = :requestId AND sub.scholar_id = u.id
+                        -- ENUM을 문자열로 비교해 NOT_SUBMITTED도 H2/MySQL에서 안전하게 평가한다.
                         AND CONCAT('', sub.status) = :submitStatus
                 ))
             ))

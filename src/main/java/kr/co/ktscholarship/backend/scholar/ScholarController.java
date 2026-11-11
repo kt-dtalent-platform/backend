@@ -6,8 +6,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
-import kr.co.ktscholarship.backend.common.exception.BusinessException;
-import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.common.response.ApiResponse;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,10 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class ScholarController {
 
-    private final ScholarRepository repository;
+    private final ScholarListService service;
 
-    public ScholarController(ScholarRepository repository) {
-        this.repository = repository;
+    public ScholarController(ScholarListService service) {
+        this.service = service;
     }
 
     @Operation(summary = "장학생 목록 조회", description = "담당자는 전체 장학생을 조회합니다. 제출 상태 필터는 requestId와 submitStatus를 함께 지정합니다.")
@@ -37,11 +35,8 @@ public class ScholarController {
         @RequestParam(name = "page_size", defaultValue = "20") @Min(1) @Max(100) int pageSize,
         HttpServletRequest request
     ) {
-        if ((requestId == null) != (submitStatus == null)) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "requestId와 submitStatus를 함께 지정해 주세요.");
-        }
         return ApiResponse.success(
-            repository.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize), request.getRequestURI()
+            service.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize), request.getRequestURI()
         );
     }
 }
