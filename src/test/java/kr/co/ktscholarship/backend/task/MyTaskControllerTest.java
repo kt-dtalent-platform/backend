@@ -6,7 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +56,7 @@ class MyTaskControllerTest {
     }
 
     @Test
-    void defaultsToOwnTodoAndReturnsCommonResponseAndUtcDday() throws Exception {
+    void defaultsToOwnTodoAndReturnsCommonResponseAndSeoulDday() throws Exception {
         mvc.perform(get("/v1/me/tasks").with(jwt().jwt(j -> j.subject("911"))
                 .authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
             .andExpect(status().isOk())
@@ -66,7 +66,7 @@ class MyTaskControllerTest {
             .andExpect(jsonPath("$.success.data.items[0].status").value("NOT_SUBMITTED"))
             .andExpect(jsonPath("$.success.data.items[0].dueAt").value("2026-12-01T00:00:00"))
             .andExpect(jsonPath("$.success.data.items[0].dDay").value(
-                (int) ChronoUnit.DAYS.between(LocalDate.now(ZoneOffset.UTC), LocalDate.of(2026,12,1))))
+                (int) ChronoUnit.DAYS.between(LocalDate.now(ZoneId.of("Asia/Seoul")), LocalDate.of(2026,12,1))))
             .andExpect(jsonPath("$.meta.path").value("/v1/me/tasks"));
     }
 
