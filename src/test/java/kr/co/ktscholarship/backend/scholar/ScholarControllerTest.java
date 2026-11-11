@@ -65,7 +65,7 @@ class ScholarControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.page").value(1))
-            .andExpect(jsonPath("$.success.data.page_size").value(20))
+            .andExpect(jsonPath("$.success.data.pageSize").value(20))
             .andExpect(jsonPath("$.success.data.total").value(4))
             .andExpect(jsonPath("$.success.data.items.length()").value(4))
             .andExpect(jsonPath("$.success.data.items[0].id").value(201))
@@ -120,7 +120,7 @@ class ScholarControllerTest {
         mockMvc.perform(get("/v1/scholars").param("page", "2").param("page_size", "2").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.page").value(2))
-            .andExpect(jsonPath("$.success.data.page_size").value(2))
+            .andExpect(jsonPath("$.success.data.pageSize").value(2))
             .andExpect(jsonPath("$.success.data.total").value(4))
             .andExpect(jsonPath("$.success.data.items[0].id").value(203))
             .andExpect(jsonPath("$.success.data.items[1].id").value(204));
