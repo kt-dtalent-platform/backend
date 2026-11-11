@@ -59,7 +59,7 @@ class MyTaskRepositoryTest {
             """).update();
         jdbc.sql("""
             INSERT INTO request_targets (id, request_id, scholar_id) VALUES
-                (1, 31, 101), (2, 31, 101), (3, 32, 101), (4, 33, 101), (5, 34, 101),
+                (1, 31, 101), (3, 32, 101), (4, 33, 101), (5, 34, 101),
                 (6, 35, 101), (7, 36, 101), (8, 37, 102), (9, 38, 101), (10, 39, 101), (11, 31, 102)
             """).update();
         jdbc.sql("""
