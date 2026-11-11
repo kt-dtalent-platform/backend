@@ -1,5 +1,6 @@
 package kr.co.ktscholarship.backend.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -7,7 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import javax.crypto.spec.SecretKeySpec;
@@ -28,7 +31,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
@@ -58,6 +63,9 @@ class AuthIntegrationTest {
 
     @Autowired
     private JwtEncoder jwtEncoder;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUpUsers() {
@@ -90,6 +98,14 @@ class AuthIntegrationTest {
         }
 
         @Test
+        void 환경변수가_없으면_토큰_만료는_발급_후_2시간() throws Exception {
+            String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
+            Jwt token = jwtDecoder.decode(JsonPath.read(body, "$.success.data.accessToken"));
+
+            assertThat(Duration.between(token.getIssuedAt(), token.getExpiresAt())).isEqualTo(Duration.ofHours(2));
+        }
+
+        @Test
         void 비밀번호가_틀리면_401_LOGIN_FAILED() throws Exception {
             expectLoginFailed(login("manager@kt.com", "wrong-password"));
         }
@@ -109,14 +125,7 @@ class AuthIntegrationTest {
             expectLoginFailed(login("locked@kt.com", "wrong-password"));
         }
 
-        @Test
-        void 같은_이메일의_계정이_둘이면_500이_아니라_401_LOGIN_FAILED() throws Exception {
-            String hash = passwordEncoder.encode(PASSWORD);
-            insertUser(6L, "dup@kt.com", hash, "중복1", "SCHOLAR", "ACTIVE", false);
-            insertUser(7L, "dup@kt.com", hash, "중복2", "SCHOLAR", "ACTIVE", false);
-
-            expectLoginFailed(login("dup@kt.com", PASSWORD));
-        }
+        // 삭제되지 않은 계정의 이메일 중복은 V2부터 DB가 막는다 (MigrationV2Test)
 
         @Test
         void 비활성_계정은_403_ACCOUNT_DISABLED() throws Exception {
