@@ -1,6 +1,8 @@
 package kr.co.ktscholarship.backend.task;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
+import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -13,7 +15,7 @@ public class MyTaskRepository {
     public enum Sort { DUE_ASC, CREATED_DESC }
 
     // API 응답 연결 전 내부 조회 결과이며, requestDueAt은 개별 연장을 적용하기 전 공통 마감일입니다.
-    public record TaskRow(long requestId, String title, LocalDateTime requestDueAt, String status, String revisionReason) {
+    public record TaskRow(long requestId, String title, Instant requestDueAt, String status, String revisionReason) {
     }
 
     private final JdbcClient jdbc;
@@ -48,7 +50,7 @@ public class MyTaskRepository {
             .param("doneOnly", filter == Filter.DONE)
             .param("createdDesc", sort == Sort.CREATED_DESC)
             .query((row, index) -> new TaskRow(
-                row.getLong("id"), row.getString("title"), row.getObject("closes_at", LocalDateTime.class),
+                row.getLong("id"), row.getString("title"), UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class)),
                 Objects.requireNonNullElse(row.getString("submission_status"), "NOT_SUBMITTED"),
                 row.getString("revision_reason")
             )).list();

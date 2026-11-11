@@ -23,10 +23,10 @@ class MyTaskServiceTest {
         var repository = mock(MyTaskRepository.class);
         var due = Instant.parse("2026-11-20T14:59:00Z");
         when(repository.find(1, MyTaskRepository.Filter.TODO, MyTaskRepository.Sort.DUE_ASC))
-            .thenReturn(List.of(new MyTaskRepository.TaskRow(2, "제출", java.time.LocalDateTime.ofInstant(due, ZoneOffset.UTC), "NOT_SUBMITTED", null)));
+            .thenReturn(List.of(new MyTaskRepository.TaskRow(2, "제출", due, "NOT_SUBMITTED", null)));
         var service = new MyTaskService(repository, Clock.fixed(Instant.parse(now), ZoneOffset.UTC));
         var item = service.find(1, MyTaskRepository.Filter.TODO, MyTaskRepository.Sort.DUE_ASC).items().get(0);
         assertThat(item.dDay()).isEqualTo(expected);
-        assertThat(item.dueAt()).isEqualTo(java.time.LocalDateTime.ofInstant(due, ZoneOffset.UTC));
+        assertThat(item.dueAt()).isEqualTo(due);
     }
 }

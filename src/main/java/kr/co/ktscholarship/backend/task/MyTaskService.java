@@ -31,7 +31,7 @@ public class MyTaskService {
         var items = repository.find(userId, status, sort).stream()
             .map(task -> new MyTaskResponse.Item(
                 task.requestId(), task.title(), task.requestDueAt(),
-                ChronoUnit.DAYS.between(today, task.requestDueAt().atZone(java.time.ZoneOffset.UTC).withZoneSameInstant(SEOUL).toLocalDate()),
+                ChronoUnit.DAYS.between(today, task.requestDueAt().atZone(SEOUL).toLocalDate()),
                 task.status(), task.revisionReason()
             )).toList();
         return new MyTaskResponse(items);

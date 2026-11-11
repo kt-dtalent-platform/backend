@@ -64,7 +64,7 @@ class MyTaskControllerTest {
             .andExpect(jsonPath("$.success.data.items.length()").value(1))
             .andExpect(jsonPath("$.success.data.items[0].requestId").value(931))
             .andExpect(jsonPath("$.success.data.items[0].status").value("NOT_SUBMITTED"))
-            .andExpect(jsonPath("$.success.data.items[0].dueAt").value("2026-12-01T00:00:00"))
+            .andExpect(jsonPath("$.success.data.items[0].dueAt").value("2026-12-01T00:00:00Z"))
             .andExpect(jsonPath("$.success.data.items[0].dDay").value(
                 (int) ChronoUnit.DAYS.between(LocalDate.now(ZoneId.of("Asia/Seoul")), LocalDate.of(2026,12,1))))
             .andExpect(jsonPath("$.meta.path").value("/v1/me/tasks"));

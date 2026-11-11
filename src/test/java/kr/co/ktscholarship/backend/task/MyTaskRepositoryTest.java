@@ -103,7 +103,7 @@ class MyTaskRepositoryTest {
         var revision = tasks.stream().filter(task -> task.requestId() == 33).findFirst().orElseThrow();
 
         assertThat(revision.title()).isEqualTo("요청3");
-        assertThat(revision.requestDueAt()).isEqualTo(LocalDateTime.of(2026, 11, 13, 0, 0));
+        assertThat(revision.requestDueAt()).isEqualTo(java.time.Instant.parse("2026-11-13T00:00:00Z"));
         assertThat(revision.revisionReason()).isEqualTo("현재 보완 사유");
         assertThat(tasks).filteredOn(task -> !task.status().equals("REVISION_REQUIRED"))
             .extracting(TaskRow::revisionReason).containsOnlyNulls();
