@@ -2,6 +2,7 @@ package kr.co.ktscholarship.backend.scholar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -9,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,9 @@ import org.springframework.web.context.WebApplicationContext;
 @SpringBootTest
 @ActiveProfiles("test")
 class ScholarUpdateControllerTest {
+
+    private static final String UTC_SECONDS = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z";
+    private static final String UTC_ANY_PRECISION = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z";
 
     @Autowired
     private WebApplicationContext context;
@@ -70,16 +74,19 @@ class ScholarUpdateControllerTest {
 
     @Test
     void updatesBothTablesAndReturnsPersistedTimestamp() throws Exception {
-        LocalDateTime before = LocalDateTime.now(java.time.ZoneOffset.UTC).minusSeconds(1);
+        LocalDateTime before = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(1);
         mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON).content("""
             {"name":"수정 이름","phone":"010-9876-5432","university":"수정 학교","major":"수정 전공"}
             """).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.id").value(201))
+            // DB의 UTC 값과 같은 시각이 Z를 붙여 초 단위로 나간다 (예: 2026-11-20T14:59:59Z)
             .andExpect(jsonPath("$.success.data.updatedAt").value(
                 jdbc.sql("SELECT updated_at FROM scholar_profiles WHERE user_id = 201")
-                    .query(LocalDateTime.class).single().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
+                    .query(LocalDateTime.class).single().toInstant(ZoneOffset.UTC).toString()))
+            .andExpect(jsonPath("$.success.data.updatedAt").value(matchesPattern(UTC_SECONDS)))
+            .andExpect(jsonPath("$.meta.timestamp").value(matchesPattern(UTC_ANY_PRECISION)))
             .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
 
         assertThat(jdbc.sql("SELECT name FROM users WHERE id = 201").query(String.class).single())
