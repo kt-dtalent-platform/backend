@@ -54,6 +54,10 @@ docker compose stop
 
 테스트는 별도 임시 DB(H2)를 사용합니다. 실제 MySQL 연결은 위의 서버 실행으로 확인하세요.
 
+## 개발 서버 배포
+
+[deploy/README.md](deploy/README.md)를 참고하세요.
+
 ## 개발 참고
 
 | 항목 | 내용 |
