@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -12,8 +14,9 @@ import java.time.Instant;
 @Table(name = "users")
 public class User {
 
-    // V1 스키마에 자동 증가가 없어 생성 방식은 사용자 등록 기능에서 정한다
+    // V2부터 DB AUTO_INCREMENT로 생성
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
@@ -51,6 +54,10 @@ public class User {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    // 임시 비밀번호로 등록된 계정은 첫 로그인 후 비밀번호를 바꿔야 한다
+    @Column(name = "password_change_required", nullable = false)
+    private boolean passwordChangeRequired;
+
     // JPA가 조회 결과로 객체를 만들 때 사용
     protected User() {
     }
@@ -77,5 +84,9 @@ public class User {
 
     public UserStatus getStatus() {
         return status;
+    }
+
+    public boolean isPasswordChangeRequired() {
+        return passwordChangeRequired;
     }
 }

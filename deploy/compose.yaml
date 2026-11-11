@@ -1,0 +1,46 @@
+# 개발 서버용 구성: 서버의 deploy 폴더에서 실행
+# 필요한 파일: 이 파일, .env(.env.example 참고), app.jar
+services:
+  mysql:
+    image: mysql:8.0
+    # 작은 서버(2GB)에 맞춰 메모리 사용량 축소
+    command: ["--innodb-buffer-pool-size=128M", "--performance-schema=OFF"]
+    environment:
+      MYSQL_DATABASE: kt_scholarship
+      MYSQL_USER: ${DB_USERNAME:?Set DB_USERNAME in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      TZ: UTC
+    # 포트를 열지 않음: 같은 구성 안의 app만 접속
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u $$MYSQL_USER -D kt_scholarship -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    image: eclipse-temurin:21-jre
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:mysql://mysql:3306/kt_scholarship?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-2h}
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      TZ: UTC
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./app.jar:/app/app.jar:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
