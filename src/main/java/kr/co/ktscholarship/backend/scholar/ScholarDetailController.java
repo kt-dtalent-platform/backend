@@ -3,8 +3,6 @@ package kr.co.ktscholarship.backend.scholar;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
-import kr.co.ktscholarship.backend.common.exception.BusinessException;
-import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.common.response.ApiResponse;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,10 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class ScholarDetailController {
 
-    private final ScholarDetailRepository repository;
+    private final ScholarDetailService service;
 
-    public ScholarDetailController(ScholarDetailRepository repository) {
-        this.repository = repository;
+    public ScholarDetailController(ScholarDetailService service) {
+        this.service = service;
     }
 
     @Operation(
@@ -33,8 +31,6 @@ public class ScholarDetailController {
     public ApiResponse<ScholarDetailResponse> getScholar(
         @PathVariable("scholarId") @Positive long scholarId, HttpServletRequest request
     ) {
-        var scholar = repository.findById(scholarId)
-            .orElseThrow(() -> new BusinessException(ErrorCode.SCHOLAR_NOT_FOUND));
-        return ApiResponse.success(scholar, request.getRequestURI());
+        return ApiResponse.success(service.findById(scholarId), request.getRequestURI());
     }
 }
