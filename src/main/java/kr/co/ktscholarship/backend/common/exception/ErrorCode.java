@@ -4,8 +4,13 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "요청 값이 올바르지 않습니다."),
+    VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "형식이 올바르지 않은 항목이 있습니다."),
+    VERSION_CONFLICT(HttpStatus.CONFLICT, "VERSION_CONFLICT", "다른 화면에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
+    SUBMISSION_LOCKED(HttpStatus.UNPROCESSABLE_CONTENT, "SUBMISSION_LOCKED", "수정할 수 없는 제출입니다."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다."),
     SCHOLAR_NOT_FOUND(HttpStatus.NOT_FOUND, "SCHOLAR_NOT_FOUND", "장학생을 찾을 수 없습니다."),
+    REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "REQUEST_NOT_FOUND", "요청을 찾을 수 없거나 아직 공개되지 않았습니다."),
+    NOT_A_TARGET(HttpStatus.FORBIDDEN, "NOT_A_TARGET", "본인이 대상자가 아닌 요청입니다."),
     PROGRAM_NOT_FOUND(HttpStatus.NOT_FOUND, "PROGRAM_NOT_FOUND", "프로그램을 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "허용되지 않은 HTTP 메서드입니다."),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다."),
