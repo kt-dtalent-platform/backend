@@ -48,7 +48,8 @@ public class User {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+    // 생성 시에는 DB 기본값, 변경 시에는 엔티티 메서드가 채운다
+    @Column(name = "updated_at", nullable = false, insertable = false)
     private Instant updatedAt;
 
     @Column(name = "deleted_at")
@@ -88,5 +89,12 @@ public class User {
 
     public boolean isPasswordChangeRequired() {
         return passwordChangeRequired;
+    }
+
+    // 새 비밀번호를 정하면 임시 비밀번호 상태도 끝난다
+    public void changePassword(String newPasswordHash, Instant changedAt) {
+        this.passwordHash = newPasswordHash;
+        this.passwordChangeRequired = false;
+        this.updatedAt = changedAt;
     }
 }
