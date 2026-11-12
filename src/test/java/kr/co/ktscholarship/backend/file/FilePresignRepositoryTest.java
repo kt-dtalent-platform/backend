@@ -114,4 +114,32 @@ class FilePresignRepositoryTest {
         assertThat(repository.isRevisionField(201, "other_field")).isFalse();
         assertThat(repository.isRevisionField(201, "missing")).isFalse();
     }
+
+    @Test
+    void onlyLatestUnresolvedRevisionCanAllowAnUpload() {
+        jdbc.sql("UPDATE revision_requests SET requested_at = '2026-11-01' WHERE id = 401").update();
+        jdbc.sql("""
+            INSERT INTO revision_requests (id, submission_id, reason, requested_by, requested_at, resolved_at) VALUES
+                (404,201,'최신 미해결',10,'2026-11-03',NULL),
+                (405,201,'해결된 최신',10,'2026-11-04','2026-11-05'),
+                (406,201,'ID만 큰 과거',10,'2026-11-02',NULL)
+            """).update();
+        jdbc.sql("""
+            INSERT INTO revision_request_fields (revision_request_id, field_key) VALUES
+                (404,'new_file'), (405,'receipt'), (406,'receipt')
+            """).update();
+
+        assertThat(repository.isRevisionField(201, "receipt")).isFalse();
+        assertThat(repository.isRevisionField(201, "new_file")).isTrue();
+
+        jdbc.sql("UPDATE revision_requests SET requested_at = '2026-11-03' WHERE id = 406").update();
+        assertThat(repository.isRevisionField(201, "receipt")).isTrue();
+        assertThat(repository.isRevisionField(201, "new_file")).isFalse();
+    }
+
+    @Test
+    void rejectsRevisionFieldsWhenAllRequestsAreResolved() {
+        jdbc.sql("UPDATE revision_requests SET resolved_at = '2026-11-06' WHERE submission_id = 201").update();
+        assertThat(repository.isRevisionField(201, "receipt")).isFalse();
+    }
 }
