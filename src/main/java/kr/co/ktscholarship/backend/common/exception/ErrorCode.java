@@ -12,6 +12,9 @@ public enum ErrorCode {
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "LOGIN_FAILED", "이메일 또는 비밀번호가 올바르지 않습니다."),
     ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "사용할 수 없는 계정입니다."),
     ACCOUNT_LOCKED(HttpStatus.LOCKED, "ACCOUNT_LOCKED", "잠긴 계정입니다. 담당자에게 문의하세요."),
+    // 401은 "로그인 안 됨"이라 프론트가 로그아웃시키므로, 입력 실수는 400으로 응답한다
+    PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "PASSWORD_MISMATCH", "현재 비밀번호가 올바르지 않습니다."),
+    SAME_AS_CURRENT(HttpStatus.BAD_REQUEST, "SAME_AS_CURRENT", "기존 비밀번호와 동일합니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.");
 
     private final HttpStatus status;
