@@ -1,11 +1,11 @@
 package kr.co.ktscholarship.backend.scholar;
 
 import java.sql.Types;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
+import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -29,10 +29,11 @@ public class ScholarUpdateRepository {
             """).param("id", scholarId).query(Long.class).optional()
             .orElseThrow(() -> new BusinessException(ErrorCode.SCHOLAR_NOT_FOUND));
 
-        LocalDateTime updatedAt = LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS);
+        // DATETIME은 초 단위라 저장 전에 맞춰 둔다. 응답 값과 DB 값이 같아진다
+        Instant updatedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         var params = new MapSqlParameterSource()
             .addValue("id", scholarId)
-            .addValue("updatedAt", updatedAt)
+            .addValue("updatedAt", UtcDateTimes.toDb(updatedAt))
             .addValue("name", request.name(), Types.VARCHAR)
             .addValue("phone", request.phone(), Types.VARCHAR)
             .addValue("university", request.university(), Types.VARCHAR)
