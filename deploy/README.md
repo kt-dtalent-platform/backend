@@ -71,7 +71,16 @@ ssh -i <키 파일> ubuntu@<서버주소> 'bash ~/kt-backend/deploy.sh'
 cd - && git worktree remove ../kt-main-deploy
 ```
 
-처음 서버를 띄울 때는 서버에서 `sudo docker compose up -d`로 실행합니다. 서버의 `ubuntu` 계정은 docker 그룹이 아니어서 `sudo`가 필요합니다.
+### 처음 서버를 띄울 때 (한 번만)
+
+`deploy.sh`는 이미 돌고 있는 앱을 교체하는 스크립트라서, 처음에는 쓸 수 없습니다(실행 중인 DB와 기존 `app.jar`를 백업하는 단계에서 멈춤). 처음 한 번은 jar를 `app.jar`로 직접 올리고 compose로 시작합니다.
+
+```bash
+scp -i <키 파일> build/libs/backend-0.0.1-SNAPSHOT.jar ubuntu@<서버주소>:~/kt-backend/app.jar
+ssh -i <키 파일> ubuntu@<서버주소> 'cd ~/kt-backend && sudo docker compose up -d'
+```
+
+그다음 배포부터는 자동 배포나 위의 수동 배포(`deploy.sh`)를 씁니다. 서버의 `ubuntu` 계정은 docker 그룹이 아니어서 `sudo`가 필요합니다.
 
 ## 확인하기
 
