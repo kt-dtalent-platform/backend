@@ -1,14 +1,21 @@
 package kr.co.ktscholarship.backend.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import javax.crypto.spec.SecretKeySpec;
 import kr.co.ktscholarship.backend.common.response.ApiResponse;
@@ -28,12 +35,15 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -57,6 +67,9 @@ class AuthIntegrationTest {
 
     @Autowired
     private JwtEncoder jwtEncoder;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @BeforeEach
     void setUpUsers() {
@@ -85,7 +98,25 @@ class AuthIntegrationTest {
                     .andExpect(jsonPath("$.success.data.accessToken").isNotEmpty())
                     .andExpect(jsonPath("$.success.data.role").value("MANAGER"))
                     .andExpect(jsonPath("$.success.data.name").value("담당자"))
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false))
                     .andExpect(jsonPath("$.meta.path").value("/v1/auth/login"));
+        }
+
+        @Test
+        void 임시_비밀번호_계정은_passwordChangeRequired가_true() throws Exception {
+            jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+
+            login("scholar@kt.com", PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(true));
+        }
+
+        @Test
+        void 환경변수가_없으면_토큰_만료는_발급_후_2시간() throws Exception {
+            String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
+            Jwt token = jwtDecoder.decode(JsonPath.read(body, "$.success.data.accessToken"));
+
+            assertThat(Duration.between(token.getIssuedAt(), token.getExpiresAt())).isEqualTo(Duration.ofHours(2));
         }
 
         @Test
@@ -108,14 +139,7 @@ class AuthIntegrationTest {
             expectLoginFailed(login("locked@kt.com", "wrong-password"));
         }
 
-        @Test
-        void 같은_이메일의_계정이_둘이면_500이_아니라_401_LOGIN_FAILED() throws Exception {
-            String hash = passwordEncoder.encode(PASSWORD);
-            insertUser(6L, "dup@kt.com", hash, "중복1", "SCHOLAR", "ACTIVE", false);
-            insertUser(7L, "dup@kt.com", hash, "중복2", "SCHOLAR", "ACTIVE", false);
-
-            expectLoginFailed(login("dup@kt.com", PASSWORD));
-        }
+        // 삭제되지 않은 계정의 이메일 중복은 V2부터 DB가 막는다 (MigrationV2Test)
 
         @Test
         void 비활성_계정은_403_ACCOUNT_DISABLED() throws Exception {
@@ -226,6 +250,40 @@ class AuthIntegrationTest {
     class Me {
 
         @Test
+        @Transactional
+        void 담당자는_전체_프로그램의_ID와_이름을_조회한다() throws Exception {
+            jdbcTemplate.update("INSERT INTO programs (id, name) VALUES (20, '두 번째 사업'), (10, '첫 번째 사업')");
+            String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
+            String token = com.jayway.jsonpath.JsonPath.read(body, "$.success.data.accessToken");
+
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms.length()").value(2))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[0].id").value(10))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[0].name").value("첫 번째 사업"))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[1].id").value(20))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms[1].name").value("두 번째 사업"));
+        }
+
+        @Test
+        void 프로그램이_없으면_담당자에게_빈_배열을_반환한다() throws Exception {
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("1", "MANAGER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").isArray())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").isEmpty());
+        }
+
+        @Test
+        @Transactional
+        void 프로그램이_있어도_장학생에게는_전체_목록을_반환하지_않는다() throws Exception {
+            jdbcTemplate.update("INSERT INTO programs (id, name) VALUES (10, '첫 번째 사업')");
+
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("2", "SCHOLAR")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").value(org.hamcrest.Matchers.nullValue()));
+        }
+
+        @Test
         void 로그인으로_받은_토큰으로_내_정보를_조회한다() throws Exception {
             String body = login("scholar@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
             String token = com.jayway.jsonpath.JsonPath.read(body, "$.success.data.accessToken");
@@ -245,6 +303,105 @@ class AuthIntegrationTest {
             mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("5", "SCHOLAR")))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+    }
+
+    @Nested
+    @DisplayName("비밀번호 변경")
+    class PasswordChange {
+
+        private static final String NEW_PASSWORD = "newPassword456";
+
+        @Test
+        void 성공하면_새_비밀번호로_로그인되고_임시_비밀번호_상태가_풀린다() throws Exception {
+            jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+
+            String body = changePassword(bearer("2", "SCHOLAR"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.resultType").value("SUCCESS"))
+                    // UTC에 Z를 붙인 초 단위 (예: 2026-11-20T14:59:59Z)
+                    .andExpect(jsonPath("$.success.data.passwordChangedAt")
+                            .value(matchesPattern("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z")))
+                    .andExpect(jsonPath("$.meta.path").value("/v1/auth/password"))
+                    .andReturn().getResponse().getContentAsString();
+
+            // 응답 시각과 DB에 저장된 시각이 같다
+            String changedAt = JsonPath.read(body, "$.success.data.passwordChangedAt");
+            LocalDateTime savedAt = jdbcTemplate.queryForObject(
+                    "SELECT updated_at FROM users WHERE id = 2", LocalDateTime.class);
+            assertThat(savedAt.toInstant(ZoneOffset.UTC)).isEqualTo(Instant.parse(changedAt));
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT password_change_required FROM users WHERE id = 2", Boolean.class)).isFalse();
+
+            login("scholar@kt.com", NEW_PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false));
+            login("scholar@kt.com", PASSWORD).andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        void 현재_비밀번호가_틀리면_401이_아니라_400_PASSWORD_MISMATCH() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), "wrong-password", NEW_PASSWORD)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("PASSWORD_MISMATCH"));
+
+            login("scholar@kt.com", PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 기존_비밀번호와_같으면_400_SAME_AS_CURRENT() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, PASSWORD)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("SAME_AS_CURRENT"));
+        }
+
+        @Test
+        void 새_비밀번호가_8자_미만이거나_64자를_넘으면_400() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, "short")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+            // BCrypt 72바이트 제한에 닿기 전에 400으로 거른다 (500이 나면 안 됨)
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, "a".repeat(65))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+            login("scholar@kt.com", PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 담당자도_자기_비밀번호를_바꿀_수_있다() throws Exception {
+            changePassword(bearer("1", "MANAGER"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isOk());
+
+            login("manager@kt.com", NEW_PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 토큰이_없으면_401() throws Exception {
+            mockMvc.perform(patch("/v1/auth/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(passwordBody(PASSWORD, NEW_PASSWORD)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+
+        @Test
+        void 토큰_발급_후_삭제된_계정은_401() throws Exception {
+            changePassword(bearer("5", "SCHOLAR"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+
+        private org.springframework.test.web.servlet.ResultActions changePassword(
+                String authorization, String currentPassword, String newPassword) throws Exception {
+            return mockMvc.perform(patch("/v1/auth/password")
+                    .header(HttpHeaders.AUTHORIZATION, authorization)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(passwordBody(currentPassword, newPassword)));
+        }
+
+        private String passwordBody(String currentPassword, String newPassword) {
+            return "{\"currentPassword\":\"" + currentPassword + "\",\"newPassword\":\"" + newPassword + "\"}";
         }
     }
 
