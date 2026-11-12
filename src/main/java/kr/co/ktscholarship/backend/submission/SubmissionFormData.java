@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-// 내부 조회 모델. 최초 상태/버전/수정 가능 항목 등은 공통 계약 확정 후 API 응답으로 변환
+// 프론트 RawSubmissionForm과 맞춘 중첩 응답. 최초 진입은 submission=null이며 조회로 초안을 만들지 않는다.
 public record SubmissionFormData(
     Request request, List<Field> fields, Submission submission, List<File> files, Revision revision
 ) {

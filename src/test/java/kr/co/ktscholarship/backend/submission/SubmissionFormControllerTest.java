@@ -64,7 +64,8 @@ class SubmissionFormControllerTest {
     void returnsOnlyTokenOwnersSubmissionEvenWithAnotherScholarId() throws Exception {
         mvc.perform(get("/v1/me/submissions/931?scholarId=912&userId=912").with(scholar(911)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success.data.request.requestDueAt").value("2026-12-01T00:00:00Z")).andExpect(jsonPath("$.resultType").value("SUCCESS"))
+            .andExpect(jsonPath("$.success.data.request.requestDueAt").value("2026-12-01T00:00:00Z"))
+            .andExpect(jsonPath("$.resultType").value("SUCCESS"))
             .andExpect(jsonPath("$.success.data.request.id").value(931))
             .andExpect(jsonPath("$.success.data.submission.id").value(951))
             .andExpect(jsonPath("$.success.data.submission.answers.value").value("본인 입력"))
@@ -103,6 +104,65 @@ class SubmissionFormControllerTest {
             .andExpect(jsonPath("$.success.data.revision.reason").value("본인 보완 사유"))
             .andExpect(jsonPath("$.success.data.revision.fieldKeys.length()").value(1))
             .andExpect(jsonPath("$.success.data.revision.fieldKeys[0]").value("own_file"));
+    }
+
+    @Test
+    void firstVisitReturnsNullSubmissionWithoutCreatingADraft() throws Exception {
+        jdbc.sql("INSERT INTO request_targets (id,request_id,scholar_id) VALUES (944,933,911)").update();
+        mvc.perform(get("/v1/me/submissions/933").with(scholar(911)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.submission").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.success.data.files").isEmpty())
+            .andExpect(jsonPath("$.success.data.revision").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.success.data.privacyNotice").doesNotExist())
+            .andExpect(jsonPath("$.success.data.request.privacyNotice").doesNotExist())
+            .andExpect(jsonPath("$.success.data.internalMemo").doesNotExist());
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql(
+            "SELECT COUNT(*) FROM submissions WHERE request_id=933 AND scholar_id=911")
+            .query(Long.class).single()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DRAFT","SUBMITTED","RESUBMITTED","CONFIRMED"})
+    void preservesNestedStatusVersionAndOmitsOldRevisions(String submissionStatus) throws Exception {
+        jdbc.sql("UPDATE submissions SET status=:status WHERE id=951")
+            .param("status",submissionStatus).update();
+        jdbc.sql("INSERT INTO revision_requests (id,submission_id,reason,requested_by) VALUES (971,951,'이전 보완',910)")
+            .update();
+        mvc.perform(get("/v1/me/submissions/931").with(scholar(911)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.submission.status").value(submissionStatus))
+            .andExpect(jsonPath("$.success.data.submission.version").value(1))
+            .andExpect(jsonPath("$.success.data.submission.answers.value").value("본인 입력"))
+            .andExpect(jsonPath("$.success.data.revision").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void returnsOrderedFieldsWithObjectOptionsAndNullableHelpText() throws Exception {
+        jdbc.sql("""
+            INSERT INTO request_fields (id,request_id,field_key,label,field_type,required,options,help_text,sort_order)
+            VALUES (991,931,'proof','증명서','FILE',TRUE,NULL,NULL,20),
+                (992,931,'scale','만점','SELECT_ONE',TRUE,
+                '[{"value":"4.5","label":"4.5점 만점"}]' FORMAT JSON,'학교 만점을 선택하세요',10)
+            """).update();
+        mvc.perform(get("/v1/me/submissions/931").with(scholar(911)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.fields[0].fieldKey").value("scale"))
+            .andExpect(jsonPath("$.success.data.fields[0].options[0].value").value("4.5"))
+            .andExpect(jsonPath("$.success.data.fields[0].options[0].label").value("4.5점 만점"))
+            .andExpect(jsonPath("$.success.data.fields[0].helpText").value("학교 만점을 선택하세요"))
+            .andExpect(jsonPath("$.success.data.fields[1].fieldKey").value("proof"))
+            .andExpect(jsonPath("$.success.data.fields[1].options").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.success.data.fields[1].helpText").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void closedRequestsRemainReadableWithoutChangingTheirSubmission() throws Exception {
+        jdbc.sql("UPDATE requests SET status='CLOSED' WHERE id=931").update();
+        mvc.perform(get("/v1/me/submissions/931").with(scholar(911)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.request.status").value("CLOSED"))
+            .andExpect(jsonPath("$.success.data.submission.status").value("DRAFT"));
     }
 
     @Test
