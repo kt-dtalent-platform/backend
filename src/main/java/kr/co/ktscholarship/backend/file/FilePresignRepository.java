@@ -45,7 +45,11 @@ public class FilePresignRepository {
             SELECT EXISTS (
                 SELECT 1 FROM revision_requests r
                 JOIN revision_request_fields f ON f.revision_request_id = r.id
-                WHERE r.submission_id = :submissionId AND r.resolved_at IS NULL AND f.field_key = :fieldKey
+                WHERE r.id = (
+                    SELECT latest.id FROM revision_requests latest
+                    WHERE latest.submission_id = :submissionId AND latest.resolved_at IS NULL
+                    ORDER BY latest.requested_at DESC, latest.id DESC LIMIT 1
+                ) AND f.field_key = :fieldKey
             )
             """).param("submissionId", submissionId).param("fieldKey", fieldKey).query(Boolean.class).single());
     }
