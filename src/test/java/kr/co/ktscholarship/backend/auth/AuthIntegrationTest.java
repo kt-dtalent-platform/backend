@@ -2,7 +2,9 @@ package kr.co.ktscholarship.backend.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,6 +14,8 @@ import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import javax.crypto.spec.SecretKeySpec;
 import kr.co.ktscholarship.backend.common.response.ApiResponse;
@@ -94,7 +98,17 @@ class AuthIntegrationTest {
                     .andExpect(jsonPath("$.success.data.accessToken").isNotEmpty())
                     .andExpect(jsonPath("$.success.data.role").value("MANAGER"))
                     .andExpect(jsonPath("$.success.data.name").value("담당자"))
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false))
                     .andExpect(jsonPath("$.meta.path").value("/v1/auth/login"));
+        }
+
+        @Test
+        void 임시_비밀번호_계정은_passwordChangeRequired가_true() throws Exception {
+            jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+
+            login("scholar@kt.com", PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(true));
         }
 
         @Test
@@ -289,6 +303,105 @@ class AuthIntegrationTest {
             mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("5", "SCHOLAR")))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+    }
+
+    @Nested
+    @DisplayName("비밀번호 변경")
+    class PasswordChange {
+
+        private static final String NEW_PASSWORD = "newPassword456";
+
+        @Test
+        void 성공하면_새_비밀번호로_로그인되고_임시_비밀번호_상태가_풀린다() throws Exception {
+            jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+
+            String body = changePassword(bearer("2", "SCHOLAR"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.resultType").value("SUCCESS"))
+                    // UTC에 Z를 붙인 초 단위 (예: 2026-11-20T14:59:59Z)
+                    .andExpect(jsonPath("$.success.data.passwordChangedAt")
+                            .value(matchesPattern("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z")))
+                    .andExpect(jsonPath("$.meta.path").value("/v1/auth/password"))
+                    .andReturn().getResponse().getContentAsString();
+
+            // 응답 시각과 DB에 저장된 시각이 같다
+            String changedAt = JsonPath.read(body, "$.success.data.passwordChangedAt");
+            LocalDateTime savedAt = jdbcTemplate.queryForObject(
+                    "SELECT updated_at FROM users WHERE id = 2", LocalDateTime.class);
+            assertThat(savedAt.toInstant(ZoneOffset.UTC)).isEqualTo(Instant.parse(changedAt));
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT password_change_required FROM users WHERE id = 2", Boolean.class)).isFalse();
+
+            login("scholar@kt.com", NEW_PASSWORD)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false));
+            login("scholar@kt.com", PASSWORD).andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        void 현재_비밀번호가_틀리면_401이_아니라_400_PASSWORD_MISMATCH() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), "wrong-password", NEW_PASSWORD)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("PASSWORD_MISMATCH"));
+
+            login("scholar@kt.com", PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 기존_비밀번호와_같으면_400_SAME_AS_CURRENT() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, PASSWORD)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("SAME_AS_CURRENT"));
+        }
+
+        @Test
+        void 새_비밀번호가_8자_미만이거나_64자를_넘으면_400() throws Exception {
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, "short")
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+            // BCrypt 72바이트 제한에 닿기 전에 400으로 거른다 (500이 나면 안 됨)
+            changePassword(bearer("2", "SCHOLAR"), PASSWORD, "a".repeat(65))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+
+            login("scholar@kt.com", PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 담당자도_자기_비밀번호를_바꿀_수_있다() throws Exception {
+            changePassword(bearer("1", "MANAGER"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isOk());
+
+            login("manager@kt.com", NEW_PASSWORD).andExpect(status().isOk());
+        }
+
+        @Test
+        void 토큰이_없으면_401() throws Exception {
+            mockMvc.perform(patch("/v1/auth/password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(passwordBody(PASSWORD, NEW_PASSWORD)))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+
+        @Test
+        void 토큰_발급_후_삭제된_계정은_401() throws Exception {
+            changePassword(bearer("5", "SCHOLAR"), PASSWORD, NEW_PASSWORD)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+        }
+
+        private org.springframework.test.web.servlet.ResultActions changePassword(
+                String authorization, String currentPassword, String newPassword) throws Exception {
+            return mockMvc.perform(patch("/v1/auth/password")
+                    .header(HttpHeaders.AUTHORIZATION, authorization)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(passwordBody(currentPassword, newPassword)));
+        }
+
+        private String passwordBody(String currentPassword, String newPassword) {
+            return "{\"currentPassword\":\"" + currentPassword + "\",\"newPassword\":\"" + newPassword + "\"}";
         }
     }
 
