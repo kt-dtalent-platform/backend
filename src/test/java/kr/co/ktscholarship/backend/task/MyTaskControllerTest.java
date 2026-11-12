@@ -56,6 +56,14 @@ class MyTaskControllerTest {
     }
 
     @Test
+    void keepsSwaggerItemSchemaSeparateFromTemplateItem() throws Exception {
+        mvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.components.schemas.MyTaskItem.properties.dueAt").exists())
+            .andExpect(jsonPath("$.components.schemas.Item.properties.fields").exists());
+    }
+
+    @Test
     void defaultsToOwnTodoAndReturnsCommonResponseAndSeoulDday() throws Exception {
         mvc.perform(get("/v1/me/tasks").with(jwt().jwt(j -> j.subject("911"))
                 .authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
