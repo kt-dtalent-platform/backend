@@ -71,6 +71,10 @@ docker compose stop
 | 외부 DB 사용 | `DB_URL` 환경변수 지정 |
 | 접속 범위 | 기본적으로 내 컴퓨터에서만 접속 가능 (`127.0.0.1`) |
 | 시간 저장 기준 | UTC |
+| 시간 응답 형식 | UTC에 `Z`를 붙인 ISO-8601 (예: `2026-11-20T14:59:59Z`). 한국 시간 표시는 프론트에서 변환 |
+| 시간 자바 타입 | 시각은 `Instant` (`LocalDateTime`은 `Z`가 빠져 프론트에서 9시간 어긋남). 날짜만 있는 값은 `LocalDate` |
+| JdbcClient 시간 값 | 쓰기는 `UtcDateTimes.toDb(instant)`, 읽기는 `UtcDateTimes.fromDb(row.getObject(.., LocalDateTime.class))`. `Instant`를 그대로 넘기면 드라이버가 JVM 시간대로 바꿀 수 있음 |
+| DB에 저장하는 시각 | 저장 전에 `truncatedTo(ChronoUnit.SECONDS)`. `DATETIME`이 초 단위라 응답 값과 DB 값을 맞추기 위함 |
 
 원본 ERD 구조는 유지했습니다. 업무 중복 방지 UNIQUE 8개는 V2에서 추가했습니다.
 
