@@ -43,7 +43,8 @@ public class MyTaskRepository {
                 AND (:doneOnly = FALSE OR s.status IN ('SUBMITTED', 'RESUBMITTED', 'CONFIRMED'))
             ORDER BY
                 CASE WHEN :createdDesc THEN r.created_at END DESC,
-                CASE WHEN NOT :createdDesc THEN r.closes_at END ASC
+                CASE WHEN NOT :createdDesc THEN r.closes_at END ASC,
+                r.id DESC
             """)
             .param("scholarId", scholarId)
             .param("todoOnly", filter == null || filter == Filter.TODO)

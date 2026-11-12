@@ -98,6 +98,16 @@ class MyTaskRepositoryTest {
     }
 
     @Test
+    void breaksEqualDeadlineAndCreationTimeTiesByNewestId() {
+        jdbc.sql("UPDATE requests SET closes_at = '2026-11-11', created_at = '2026-11-01' WHERE id IN (31,32,33)").update();
+
+        assertThat(repository.find(101, Filter.TODO, Sort.DUE_ASC))
+            .extracting(TaskRow::requestId).containsExactly(33L,32L,31L);
+        assertThat(repository.find(101, Filter.TODO, Sort.CREATED_DESC))
+            .extracting(TaskRow::requestId).containsExactly(33L,32L,31L);
+    }
+
+    @Test
     void returnsCommonDeadlineAndOnlyCurrentRevisionReason() {
         var tasks = repository.find(101, Filter.ALL, Sort.DUE_ASC);
         var revision = tasks.stream().filter(task -> task.requestId() == 33).findFirst().orElseThrow();
