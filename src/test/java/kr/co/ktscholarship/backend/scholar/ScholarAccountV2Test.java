@@ -3,8 +3,7 @@ package kr.co.ktscholarship.backend.scholar;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import kr.co.ktscholarship.backend.common.exception.BusinessException;
-import kr.co.ktscholarship.backend.common.exception.ErrorCode;
+import org.springframework.dao.DuplicateKeyException;
 import kr.co.ktscholarship.backend.user.UserStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -40,8 +39,7 @@ class ScholarAccountV2Test {
                 AND password_change_required = TRUE AND status = 'INACTIVE'
                 """, Integer.class, id)).isOne();
             assertThatThrownBy(() -> insert(email))
-                .isInstanceOfSatisfying(BusinessException.class,
-                    error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_EMAIL));
+                .isInstanceOf(DuplicateKeyException.class);
             jdbc.update("UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id);
             assertThat(insert(email)).isGreaterThan(id);
             tx.setRollbackOnly();

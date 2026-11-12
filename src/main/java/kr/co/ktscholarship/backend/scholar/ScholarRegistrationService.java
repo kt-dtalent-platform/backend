@@ -6,6 +6,7 @@ import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.user.UserStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,8 +30,16 @@ public class ScholarRegistrationService {
         byte[] bytes = new byte[18];
         random.nextBytes(bytes);
         String temporaryPassword = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        long id = repository.insertAccount(request.name(), request.email(),
-            passwordEncoder.encode(temporaryPassword), UserStatus.ACTIVE);
+        long id;
+        try {
+            id = repository.insertAccount(request.name(), request.email(),
+                passwordEncoder.encode(temporaryPassword), UserStatus.ACTIVE);
+        } catch (DuplicateKeyException exception) {
+            if (repository.isActiveEmailConflict(exception)) {
+                throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
+            }
+            throw exception;
+        }
         repository.insertProfile(id, request);
         return new ScholarCreateResponse(id, UserStatus.ACTIVE.name(), temporaryPassword);
     }
