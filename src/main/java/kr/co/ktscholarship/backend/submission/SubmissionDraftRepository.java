@@ -52,10 +52,10 @@ public class SubmissionDraftRepository {
     }
 
     List<Field> fields(long requestId) {
-        return jdbc.sql("SELECT field_key, field_type, options, validation FROM request_fields WHERE request_id = :id ORDER BY sort_order, id")
+        return jdbc.sql("SELECT field_key, field_type, required, options, validation FROM request_fields WHERE request_id = :id ORDER BY sort_order, id")
             .param("id", requestId).query((rs, n) -> new Field(rs.getString("field_key"), rs.getString("field_type"),
                 rs.getString("options") == null ? List.of() : json.readValue(rs.getString("options"), List.class),
-                rs.getString("validation") == null ? Map.of() : json.readValue(rs.getString("validation"), ANSWERS))).list();
+                rs.getString("validation") == null ? Map.of() : json.readValue(rs.getString("validation"), ANSWERS), rs.getBoolean("required"))).list();
     }
 
     Optional<Set<String>> revisionFields(long submissionId) {
@@ -85,5 +85,5 @@ public class SubmissionDraftRepository {
 
     record Request(String status, Instant closesAt) {}
     record Submission(long id, String status, int version, Map<String, Object> answers) {}
-    record Field(String key, String type, List<?> options, Map<String, Object> validation) {}
+    record Field(String key, String type, List<?> options, Map<String, Object> validation, boolean required) {}
 }
