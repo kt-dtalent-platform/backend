@@ -4,6 +4,10 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "요청 값이 올바르지 않습니다."),
+    FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다."),
+    FILE_LOCKED(HttpStatus.UNPROCESSABLE_CONTENT, "FILE_LOCKED", "수정할 수 없는 파일입니다."),
+    UPLOAD_NOT_FOUND(HttpStatus.BAD_REQUEST, "UPLOAD_NOT_FOUND", "저장소에 파일이 존재하지 않습니다."),
+    FILE_MISMATCH(HttpStatus.BAD_REQUEST, "FILE_MISMATCH", "신고한 크기·형식과 실제 파일이 다릅니다."),
     SUBMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "제출을 찾을 수 없습니다."),
     SUBMISSION_LOCKED(HttpStatus.UNPROCESSABLE_CONTENT, "SUBMISSION_LOCKED", "수정할 수 없는 제출입니다."),
     INVALID_EXTENSION(HttpStatus.BAD_REQUEST, "INVALID_EXTENSION", "허용되지 않은 파일 형식입니다."),
