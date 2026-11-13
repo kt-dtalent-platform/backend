@@ -55,6 +55,7 @@ public class SecurityConfig {
 
                         .requestMatchers("/v1/me").authenticated()
                         .requestMatchers("/v1/me/**").hasRole(SCHOLAR)
+                        .requestMatchers(HttpMethod.POST, "/v1/submissions/*/files/presign").hasRole(SCHOLAR)
 
                         // 그 밖의 경로는 로그인만 확인하고, 역할은 메서드의 @PreAuthorize로 검사
                         .anyRequest().authenticated()
