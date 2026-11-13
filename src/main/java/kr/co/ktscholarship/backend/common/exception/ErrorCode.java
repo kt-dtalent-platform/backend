@@ -3,6 +3,10 @@ package kr.co.ktscholarship.backend.common.exception;
 import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
+    DEADLINE_PASSED(HttpStatus.UNPROCESSABLE_CONTENT, "DEADLINE_PASSED", "제출 기한이 지났습니다."),
+    ALREADY_SUBMITTED(HttpStatus.UNPROCESSABLE_CONTENT, "ALREADY_SUBMITTED", "이미 제출된 요청입니다."),
+    NOT_IN_REVISION(HttpStatus.UNPROCESSABLE_CONTENT, "NOT_IN_REVISION", "보완 요청 상태가 아닙니다."),
+    FIELD_NOT_EDITABLE(HttpStatus.BAD_REQUEST, "FIELD_NOT_EDITABLE", "보완 요청되지 않은 항목은 수정할 수 없습니다."),
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "요청 값이 올바르지 않습니다."),
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "형식이 올바르지 않은 항목이 있습니다."),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "VERSION_CONFLICT", "다른 화면에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
