@@ -3,12 +3,16 @@ package kr.co.ktscholarship.backend.auth;
 import kr.co.ktscholarship.backend.auth.dto.LoginRequest;
 import kr.co.ktscholarship.backend.auth.dto.LoginResponse;
 import kr.co.ktscholarship.backend.auth.dto.MeResponse;
+import kr.co.ktscholarship.backend.auth.dto.PasswordChangeRequest;
+import kr.co.ktscholarship.backend.auth.dto.PasswordChangeResponse;
 import kr.co.ktscholarship.backend.auth.jwt.JwtTokenProvider;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.user.User;
 import kr.co.ktscholarship.backend.user.UserRepository;
 import kr.co.ktscholarship.backend.user.UserRole;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,7 +70,26 @@ public class AuthService {
         }
 
         String accessToken = jwtTokenProvider.createAccessToken(user);
-        return new LoginResponse(accessToken, user.getRole().name(), user.getName());
+        return new LoginResponse(accessToken, user.getRole().name(), user.getName(), user.isPasswordChangeRequired());
+    }
+
+    @Transactional
+    public PasswordChangeResponse changePassword(Long userId, PasswordChangeRequest request) {
+        // 토큰 발급 후 삭제된 계정은 인증 실패로 처리
+        User user = userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.PASSWORD_MISMATCH);
+        }
+        // 해시는 매번 달라서 문자열 비교가 아니라 matches로 확인한다
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.SAME_AS_CURRENT);
+        }
+
+        // DATETIME이 초 단위라 저장 전에 맞춰 둔다. 응답 값과 DB 값이 같아진다
+        Instant changedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        user.changePassword(passwordEncoder.encode(request.newPassword()), changedAt);
+        return new PasswordChangeResponse(changedAt);
     }
 
     public MeResponse getMe(Long userId) {

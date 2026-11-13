@@ -1,0 +1,149 @@
+name: Deploy to dev server
+
+# main에 push된 뒤 Backend CI가 성공하면 개발 서버(EC2)에 배포한다
+# Actions 탭에서 손으로 실행할 수도 있다 (main 브랜치에서만 AWS 역할을 쓸 수 있음)
+on:
+  workflow_run:
+    workflows: [Backend CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# 배포가 겹치지 않게 하나씩 실행한다 (진행 중인 배포는 취소하지 않음)
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # AWS OIDC 임시 자격 증명 발급용
+
+env:
+  AWS_REGION: ap-northeast-2
+  SERVER_DIR: kt-backend
+
+jobs:
+  # 연달아 머지하면 앞 커밋의 CI가 더 늦게 끝날 수 있다
+  # 그 결과로 배포하면 서버가 옛 버전으로 돌아가므로, main의 최신 커밋일 때만 배포한다
+  # (최신 커밋은 자기 CI가 끝난 뒤 따로 배포된다)
+  check:
+    name: Check latest main
+    # CI가 main push에서 성공했을 때, 또는 main에서 손으로 실행했을 때만
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'push')
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      latest: ${{ steps.compare.outputs.latest }}
+    steps:
+      - name: Compare with main
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          MAIN_SHA=$(gh api "repos/${{ github.repository }}/commits/main" --jq .sha)
+          if [[ "$TARGET_SHA" == "$MAIN_SHA" ]]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$TARGET_SHA 는 main 최신($MAIN_SHA)이 아니라 배포를 건너뜁니다"
+          fi
+
+  deploy:
+    name: Deploy
+    needs: check
+    if: needs.check.outputs.latest == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v6
+        with:
+          # CI가 테스트한 바로 그 커밋으로 빌드한다
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # 배포 작업은 push하지 않으므로 GitHub 토큰을 git 설정에 남기지 않는다
+          persist-credentials: false
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
+
+      # 테스트는 CI에서 통과했으므로 다시 돌리지 않는다
+      - name: Build jar
+        run: |
+          ./gradlew bootJar -x test
+          cp build/libs/backend-0.0.1-SNAPSHOT.jar app.jar
+          echo "JAR_SHA=$(sha256sum app.jar | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 평소 SSH는 관리자 IP에만 열려 있어서, 배포하는 동안만 이 실행 서버 IP를 추가한다
+      - name: Allow SSH from runner
+        run: |
+          RUNNER_IP=$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')
+          [[ "$RUNNER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "실행 서버 IP 확인 실패"; exit 1; }
+          # 추가 요청이 실패해도 규칙이 생겼을 수 있으니, 요청 전에 IP를 기록해 정리 단계가 쓰게 한다
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${{ vars.EC2_SECURITY_GROUP_ID }}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=github-actions-deploy}]"
+
+      # 비밀값은 스크립트 본문에 직접 넣지 않고 환경 변수로 넘긴다
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.EC2_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 접속할 서버가 진짜 우리 서버인지 확인하는 값
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload jar and script
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            app.jar "ubuntu@${{ vars.EC2_HOST }}:${SERVER_DIR}/app.jar.new"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            deploy/deploy.sh "ubuntu@${{ vars.EC2_HOST }}:${SERVER_DIR}/deploy.sh"
+
+      - name: Swap jar on server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "ubuntu@${{ vars.EC2_HOST }}" \
+            "bash ${SERVER_DIR}/deploy.sh ${JAR_SHA}"
+
+      - name: Check health from outside
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 "http://${{ vars.EC2_HOST }}:8080/actuator/health"
+
+      # 배포가 실패해도 임시 SSH 규칙은 반드시 지운다
+      # 추가 단계의 성공 여부와 상관없이 IP를 구했으면 지우고, 규칙이 원래 없던 경우만 넘어간다
+      # (이 실행 서버의 IP/32 규칙만 지우므로 관리자 IP 규칙은 건드리지 않는다)
+      - name: Revoke SSH from runner
+        if: always() && env.RUNNER_IP != ''
+        run: |
+          if ! OUT=$(aws ec2 revoke-security-group-ingress \
+            --group-id "${{ vars.EC2_SECURITY_GROUP_ID }}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32}]" 2>&1); then
+            echo "$OUT"
+            grep -q 'InvalidPermission.NotFound' <<< "$OUT" || exit 1
+            echo "지울 규칙이 없습니다 (추가되지 않았음)"
+          fi
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
