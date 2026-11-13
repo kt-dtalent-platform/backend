@@ -195,12 +195,14 @@ class RequestListControllerTest {
     }
 
     // 다른 목록 응답의 Item과 Swagger 스키마 이름이 겹치면 한쪽 문서가 덮어써진다
+    // 요청 목록은 자기 이름(RequestListItem)의 스키마를 가리키는지만 본다 (다른 목록의 Item 이름에 기대지 않음)
     @Test
-    void keepsSwaggerSchemaSeparateFromTemplateItem() throws Exception {
+    void keepsSwaggerSchemaSeparateFromOtherItems() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.components.schemas.RequestListItem.properties.submittedCount").exists())
-            .andExpect(jsonPath("$.components.schemas.Item.properties.fields").exists());
+            .andExpect(jsonPath("$.components.schemas.RequestListResponse.properties.items.items['$ref']")
+                .value("#/components/schemas/RequestListItem"));
     }
 
     private MockHttpServletRequestBuilder asManager(MockHttpServletRequestBuilder builder) {
