@@ -8,6 +8,7 @@
 | 외부 공개 포트 | 8080 (MySQL 3306은 공개하지 않음) |
 | 서버 폴더 | `~/kt-backend` |
 | 비밀값 | 서버의 `~/kt-backend/.env`에만 둠. Git·노션·단톡에 올리지 않음 |
+| 파일 저장소 | S3 버킷(서울). 서버는 EC2에 연결한 IAM 역할로 접근하므로 `.env`에 AWS 키를 넣지 않음 |
 
 ## 처음 한 번: 서버 준비
 
@@ -81,6 +82,21 @@ ssh -i <키 파일> ubuntu@<서버주소> 'cd ~/kt-backend && sudo docker compos
 ```
 
 그다음 배포부터는 자동 배포나 위의 수동 배포(`deploy.sh`)를 씁니다. 서버의 `ubuntu` 계정은 docker 그룹이 아니어서 `sudo`가 필요합니다.
+
+### 설정 파일이 바뀌었을 때
+
+자동 배포는 jar와 `deploy.sh`만 서버로 보냅니다. `deploy/compose.yaml`이나 `deploy/.env.example`이 바뀐 PR은 **머지 전에** 서버 파일을 직접 맞춰야 합니다.
+
+1. 바뀐 `compose.yaml`을 서버로 복사합니다.
+
+   ```bash
+   scp -i <키 파일> deploy/compose.yaml ubuntu@<서버주소>:~/kt-backend/compose.yaml
+   ```
+
+2. `.env.example`에 새로 생긴 값이 있으면 서버 `~/kt-backend/.env`에 같은 이름으로 추가합니다.
+3. PR을 머지하면 자동 배포의 `docker compose up -d app`이 새 설정으로 앱 컨테이너를 다시 만듭니다.
+
+서버 `.env`에 값이 없으면 compose의 기본값이 쓰입니다. 예를 들어 `S3_ENABLED`가 없으면 `false`라서 서버는 뜨지만 파일 업로드 API는 `STORAGE_UNAVAILABLE`로 응답합니다.
 
 ## 확인하기
 

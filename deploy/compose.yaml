@@ -31,6 +31,10 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_ACCESS_TOKEN_EXPIRATION: ${JWT_ACCESS_TOKEN_EXPIRATION:-2h}
+      # 파일 저장소(S3). 자격 증명은 EC2에 연결한 IAM 역할에서 자동으로 받으므로 키를 넣지 않는다
+      S3_ENABLED: ${S3_ENABLED:-false}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-ap-northeast-2}
       JAVA_TOOL_OPTIONS: -Xmx512m
       TZ: UTC
     ports:
