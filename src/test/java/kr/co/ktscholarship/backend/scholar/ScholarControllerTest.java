@@ -32,10 +32,17 @@ class ScholarControllerTest {
     @Autowired
     private JdbcClient jdbc;
 
+    @Autowired
+    private javax.sql.DataSource dataSource;
+
     private MockMvc mockMvc;
+    private boolean h2;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws java.sql.SQLException {
+        try (var connection = dataSource.getConnection()) {
+            h2 = connection.getMetaData().getDatabaseProductName().equals("H2");
+        }
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO programs (id, name) VALUES (101, '프로그램')").update();
         jdbc.sql("INSERT INTO cohorts (id, program_id, name) VALUES (106, 101, '6기'), (107, 101, '7기')")
@@ -186,7 +193,7 @@ class ScholarControllerTest {
                 VALUES (401, 301, 201, :status, '{}' FORMAT JSON),
                     (402, 301, 202, :status, '{}' FORMAT JSON),
                     (403, 302, 203, :status, '{}' FORMAT JSON)
-                """).param("status", submitStatus).update();
+                """.replace(" FORMAT JSON", h2 ? " FORMAT JSON" : "")).param("status", submitStatus).update();
         }
         mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", submitStatus)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
@@ -224,7 +231,8 @@ class ScholarControllerTest {
     }
 
     private void addRequestTargets() {
-        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'FILTER_TEST', '검증', '[]' FORMAT JSON)").update();
+        String json = h2 ? "'[]' FORMAT JSON" : "'[]'";
+        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'FILTER_TEST', '검증', " + json + ")").update();
         jdbc.sql("""
             INSERT INTO requests (id, program_id, template_id, title, academic_year, semester, closes_at, status, created_by, published_at)
             VALUES (301, 101, 101, '필터 대상', 2026, '2', '2026-12-01', 'IN_PROGRESS', 206, '2026-11-01'),
