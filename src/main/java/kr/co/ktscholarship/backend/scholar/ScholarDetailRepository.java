@@ -18,6 +18,7 @@ public class ScholarDetailRepository {
         return jdbc.sql("""
             SELECT u.id, u.name, u.email, s.phone, s.school_name, s.major,
                 c.id AS cohort_id, c.name AS cohort_name, s.status,
+                s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail,
                 COALESCE(summary.total, 0) AS total, COALESCE(summary.confirmed, 0) AS confirmed
             FROM scholar_profiles s
             JOIN users u ON u.id = s.user_id
@@ -41,7 +42,9 @@ public class ScholarDetailRepository {
                 new ScholarDetailResponse.Cohort(row.getLong("cohort_id"), row.getString("cohort_name")),
                 row.getString("status"),
                 new ScholarDetailResponse.SubmissionSummary(row.getLong("total"), row.getLong("confirmed"),
-                    row.getLong("total") - row.getLong("confirmed"))
+                    row.getLong("total") - row.getLong("confirmed")),
+                row.getObject("completed_year", Integer.class), row.getString("withdrawal_reason"),
+                row.getString("withdrawal_reason_detail")
             )).optional();
     }
 }
