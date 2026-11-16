@@ -28,6 +28,8 @@ public class ScholarController {
         @RequestParam(name = "status", required = false)
         @Pattern(regexp = "ENROLLED|LEAVE|COMPLETED|GRADUATED|WITHDRAWN") String status,
         @RequestParam(name = "keyword", required = false) String keyword,
+        @RequestParam(name = "sort", required = false)
+        @Pattern(regexp = "(name|cohort|university|status|email),(asc|desc)") String sort,
         @RequestParam(name = "requestId", required = false) @Positive Long requestId,
         @RequestParam(name = "submitStatus", required = false)
         @Pattern(regexp = "NOT_SUBMITTED|DRAFT|SUBMITTED|RESUBMITTED|REVISION_REQUIRED|CONFIRMED") String submitStatus,
@@ -36,7 +38,7 @@ public class ScholarController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(
-            service.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize), request.getRequestURI()
+            service.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize, sort), request.getRequestURI()
         );
     }
 }
