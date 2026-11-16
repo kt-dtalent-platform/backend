@@ -60,6 +60,14 @@ class ScholarControllerTest {
     }
 
     @Test
+    void keepsSwaggerItemSchemaSeparateFromTemplateItem() throws Exception {
+        mockMvc.perform(get("/v3/api-docs"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.components.schemas.ScholarListItem.properties.maskedPhone").exists())
+            .andExpect(jsonPath("$.components.schemas.Item.properties.fields").exists());
+    }
+
+    @Test
     void returnsDefaultPageWithMaskedPhonesAndCommonResponse() throws Exception {
         mockMvc.perform(get("/v1/scholars").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
