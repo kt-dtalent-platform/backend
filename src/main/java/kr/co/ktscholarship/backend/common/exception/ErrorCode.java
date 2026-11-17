@@ -17,6 +17,7 @@ public enum ErrorCode {
     SCHOLAR_NOT_FOUND(HttpStatus.NOT_FOUND, "SCHOLAR_NOT_FOUND", "장학생을 찾을 수 없습니다."),
     REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "REQUEST_NOT_FOUND", "요청을 찾을 수 없거나 아직 공개되지 않았습니다."),
     NOT_A_TARGET(HttpStatus.FORBIDDEN, "NOT_A_TARGET", "본인이 대상자가 아닌 요청입니다."),
+    REQUEST_NOT_EDITABLE(HttpStatus.CONFLICT, "REQUEST_NOT_EDITABLE", "작성 중인 요청만 수정할 수 있습니다."),
     PROGRAM_NOT_FOUND(HttpStatus.NOT_FOUND, "PROGRAM_NOT_FOUND", "프로그램을 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", "허용되지 않은 HTTP 메서드입니다."),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다."),
