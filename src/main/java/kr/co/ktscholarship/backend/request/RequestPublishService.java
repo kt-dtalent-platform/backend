@@ -3,6 +3,7 @@ package kr.co.ktscholarship.backend.request;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -77,9 +78,15 @@ public class RequestPublishService {
         } catch (JacksonException exception) {
             throw new BusinessException(ErrorCode.REQUEST_NOT_PUBLISHABLE, List.of("fields"));
         }
+        // JSON null, [null], 같은 fieldKey 두 번은 500(NPE·UNIQUE 위반)이 되기 전에 여기서 걸러 낸다
+        if (raw == null) {
+            throw new BusinessException(ErrorCode.REQUEST_NOT_PUBLISHABLE, List.of("fields"));
+        }
         List<RequestField> fields = new ArrayList<>();
+        Set<String> keys = new HashSet<>();
         for (Map<String, Object> item : raw) {
-            if (!(item.get("fieldKey") instanceof String key) || key.isBlank() || key.length() > 64
+            if (item == null
+                || !(item.get("fieldKey") instanceof String key) || key.isBlank() || key.length() > 64 || !keys.add(key)
                 || !(item.get("label") instanceof String label) || label.isBlank() || label.length() > 100
                 || !(item.get("fieldType") instanceof String type) || !FIELD_TYPES.contains(type)) {
                 throw new BusinessException(ErrorCode.REQUEST_NOT_PUBLISHABLE, List.of("fields"));

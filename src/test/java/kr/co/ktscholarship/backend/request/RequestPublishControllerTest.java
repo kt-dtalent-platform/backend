@@ -183,6 +183,33 @@ class RequestPublishControllerTest {
         assertThat(targets(requestId)).isEmpty();
     }
 
+    // 템플릿 JSON이 이상해도 500이 아니라 fields 이유로 거절한다 (정윤 리뷰에서 재현한 세 경우)
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+        "null",
+        "[null]",
+        "[{\"fieldKey\":\"same\",\"label\":\"one\",\"fieldType\":\"TEXT\"},{\"fieldKey\":\"same\",\"label\":\"two\",\"fieldType\":\"TEXT\"}]",
+        "[{\"fieldKey\":\"gpa\",\"label\":\"평점\",\"fieldType\":\"MONEY\"}]",
+        "{\"fieldKey\":\"gpa\"}"
+    })
+    void rejectsMalformedTemplateFieldsAsConflict(String defaultFields) throws Exception {
+        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (862, 'TEST_PUBLISH_BAD', '이상한 템플릿', :fields FORMAT JSON)")
+            .param("fields", defaultFields).update();
+        jdbc.sql("""
+            INSERT INTO requests (id, program_id, cohort_id, template_id, title, academic_year, semester,
+                closes_at, status, created_by) VALUES
+                (857, 851, 856, 862, '이상한 템플릿 요청', 2026, '2', '2099-12-31 14:59:59', 'DRAFT', 950)
+            """).update();
+
+        mockMvc.perform(asManager(post("/v1/requests/857/publish")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("REQUEST_NOT_PUBLISHABLE"))
+            .andExpect(jsonPath("$.error.details[0]").value("fields"));
+
+        assertThat(jdbc.sql("SELECT status FROM requests WHERE id = 857").query(String.class).single()).isEqualTo("DRAFT");
+        assertThat(targets(857)).isEmpty();
+    }
+
     @Test
     void rejectsSecondPublish() throws Exception {
         mockMvc.perform(asManager(post("/v1/requests/851/publish"))).andExpect(status().isOk());
