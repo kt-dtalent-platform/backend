@@ -107,6 +107,6 @@ class ScholarRegistrationIntegrationTest {
     }
 
     private ScholarCreateRequest request(long cohort, String email, String university) {
-        return new ScholarCreateRequest(cohort,"학생",email,null,university,null,null);
+        return new ScholarCreateRequest(cohort,"학생",email,null,university,null,null,null);
     }
 }

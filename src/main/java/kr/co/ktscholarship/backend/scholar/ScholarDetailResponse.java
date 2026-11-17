@@ -4,7 +4,7 @@ public record ScholarDetailResponse(
     long id, String name, String email, String maskedPhone, String university,
     String major, Cohort cohort, String status, SubmissionSummary submissionSummary,
     Integer completedYear, String withdrawalReason, String withdrawalReasonDetail,
-    ScholarBankAccount bankAccount
+    ScholarBankAccount bankAccount, Long schoolId
 ) {
     public record SubmissionSummary(long total, long confirmed, long pending) {
     }

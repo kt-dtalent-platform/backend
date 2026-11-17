@@ -2,6 +2,7 @@ package kr.co.ktscholarship.backend.school;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -9,6 +10,11 @@ import org.springframework.stereotype.Repository;
 public class SchoolRepository {
     private final JdbcClient jdbc;
     public SchoolRepository(JdbcClient jdbc) { this.jdbc = jdbc; }
+
+    public Optional<String> findNameById(long schoolId) {
+        return jdbc.sql("SELECT name FROM schools WHERE id = :id")
+            .param("id", schoolId).query(String.class).optional();
+    }
 
     public List<SchoolSearchResponse.Item> search(String keyword, int size) {
         String normalized = keyword.replace(" ", "").replace("(", "").replace(")", "").toLowerCase(Locale.ROOT);

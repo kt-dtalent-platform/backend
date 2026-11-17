@@ -2,14 +2,10 @@ package kr.co.ktscholarship.backend.scholar;
 
 import java.sql.Types;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import kr.co.ktscholarship.backend.common.exception.BusinessException;
-import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class ScholarUpdateRepository {
@@ -20,23 +16,23 @@ public class ScholarUpdateRepository {
         this.jdbc = jdbc;
     }
 
-    @Transactional
-    public ScholarUpdateResponse update(long scholarId, ScholarUpdateRequest request) {
-        jdbc.sql("""
+    public boolean lockExists(long scholarId) {
+        return jdbc.sql("""
             SELECT u.id FROM users u JOIN scholar_profiles s ON s.user_id = u.id
             WHERE u.id = :id AND u.role = 'SCHOLAR' AND u.deleted_at IS NULL
             FOR UPDATE
             """).param("id", scholarId).query(Long.class).optional()
-            .orElseThrow(() -> new BusinessException(ErrorCode.SCHOLAR_NOT_FOUND));
+            .isPresent();
+    }
 
-        // DATETIME은 초 단위라 저장 전에 맞춰 둔다. 응답 값과 DB 값이 같아진다
-        Instant updatedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    public void update(long scholarId, ScholarUpdateRequest request, String schoolName, Instant updatedAt) {
         var params = new MapSqlParameterSource()
             .addValue("id", scholarId)
             .addValue("updatedAt", UtcDateTimes.toDb(updatedAt))
             .addValue("name", request.name(), Types.VARCHAR)
             .addValue("phone", request.phone(), Types.VARCHAR)
-            .addValue("university", request.university(), Types.VARCHAR)
+            .addValue("university", schoolName, Types.VARCHAR)
+            .addValue("schoolId", request.schoolId(), Types.BIGINT)
             .addValue("major", request.major(), Types.VARCHAR);
 
         if (request.name() != null) {
@@ -46,9 +42,9 @@ public class ScholarUpdateRepository {
         jdbc.sql("""
             UPDATE scholar_profiles
             SET phone = COALESCE(:phone, phone), school_name = COALESCE(:university, school_name),
+                school_id = CASE WHEN :university IS NULL THEN school_id ELSE :schoolId END,
                 major = COALESCE(:major, major), updated_at = :updatedAt
             WHERE user_id = :id
             """).paramSource(params).update();
-        return new ScholarUpdateResponse(scholarId, updatedAt);
     }
 }
