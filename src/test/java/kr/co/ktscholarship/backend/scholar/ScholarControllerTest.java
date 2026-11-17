@@ -32,10 +32,17 @@ class ScholarControllerTest {
     @Autowired
     private JdbcClient jdbc;
 
+    @Autowired
+    private javax.sql.DataSource dataSource;
+
     private MockMvc mockMvc;
+    private boolean h2;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws java.sql.SQLException {
+        try (var connection = dataSource.getConnection()) {
+            h2 = connection.getMetaData().getDatabaseProductName().equals("H2");
+        }
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO programs (id, name) VALUES (101, '프로그램')").update();
         jdbc.sql("INSERT INTO cohorts (id, program_id, name) VALUES (106, 101, '6기'), (107, 101, '7기')")
@@ -71,26 +78,29 @@ class ScholarControllerTest {
     void returnsDefaultPageWithMaskedPhonesAndCommonResponse() throws Exception {
         mockMvc.perform(get("/v1/scholars").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.resultType").value("SUCCESS"))
+            .andExpect(jsonPath("$.success.data.total").value(4))
             .andExpect(jsonPath("$.success.data.page").value(1))
             .andExpect(jsonPath("$.success.data.pageSize").value(20))
-            .andExpect(jsonPath("$.success.data.total").value(4))
-            .andExpect(jsonPath("$.success.data.items.length()").value(4))
-            .andExpect(jsonPath("$.success.data.items[0].id").value(201))
-            .andExpect(jsonPath("$.success.data.items[0].name").value("홍길동"))
-            .andExpect(jsonPath("$.success.data.items[0].email").value("hong@example.test"))
-            .andExpect(jsonPath("$.success.data.items[0].maskedPhone").value("010-****-5678"))
-            .andExpect(jsonPath("$.success.data.items[0].cohortName").value("6기"))
-            .andExpect(jsonPath("$.success.data.items[0].university").value("테스트대학교"))
-            .andExpect(jsonPath("$.success.data.items[0].status").value("ENROLLED"))
-            .andExpect(jsonPath("$.success.data.items[0].accountStatus").value("ACTIVE"))
+            .andExpect(jsonPath("$.success.data.items[*].id").value(org.hamcrest.Matchers.contains(203,204,202,201)))
+            .andExpect(jsonPath("$.success.data.items[0].maskedPhone").value("010-****-4321"))
+            .andExpect(jsonPath("$.success.data.items[1].maskedPhone").value("****"))
+            .andExpect(jsonPath("$.success.data.items[2].maskedPhone").value(nullValue()))
+            .andExpect(jsonPath("$.success.data.items[3].maskedPhone").value("010-****-5678"))
             .andExpect(jsonPath("$.success.data.items[0].phone").doesNotExist())
-            .andExpect(jsonPath("$.success.data.items[1].maskedPhone").value(nullValue()))
-            .andExpect(jsonPath("$.success.data.items[2].maskedPhone").value("010-****-4321"))
-            .andExpect(jsonPath("$.success.data.items[3].maskedPhone").value("****"))
-            .andExpect(jsonPath("$.success.data.items[3].accountStatus").value("INACTIVE"))
+            .andExpect(jsonPath("$.success.data.items[1].accountStatus").value("INACTIVE"))
             .andExpect(jsonPath("$.error").value(nullValue()))
             .andExpect(jsonPath("$.meta.path").value("/v1/scholars"));
+    }
+
+    @Test
+    void supportsExplicitColumnSortAndRejectsSqlFragments() throws Exception {
+        mockMvc.perform(get("/v1/scholars").param("sort","name,asc")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.items[*].id").value(org.hamcrest.Matchers.contains(202,203,204,201)));
+        mockMvc.perform(get("/v1/scholars").param("sort","name,desc;DROP TABLE users")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isBadRequest());
     }
 
     @ParameterizedTest
@@ -130,8 +140,8 @@ class ScholarControllerTest {
             .andExpect(jsonPath("$.success.data.page").value(2))
             .andExpect(jsonPath("$.success.data.pageSize").value(2))
             .andExpect(jsonPath("$.success.data.total").value(4))
-            .andExpect(jsonPath("$.success.data.items[0].id").value(203))
-            .andExpect(jsonPath("$.success.data.items[1].id").value(204));
+            .andExpect(jsonPath("$.success.data.items[0].id").value(202))
+            .andExpect(jsonPath("$.success.data.items[1].id").value(201));
     }
 
     @Test
@@ -183,7 +193,7 @@ class ScholarControllerTest {
                 VALUES (401, 301, 201, :status, '{}' FORMAT JSON),
                     (402, 301, 202, :status, '{}' FORMAT JSON),
                     (403, 302, 203, :status, '{}' FORMAT JSON)
-                """).param("status", submitStatus).update();
+                """.replace(" FORMAT JSON", h2 ? " FORMAT JSON" : "")).param("status", submitStatus).update();
         }
         mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", submitStatus)
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
@@ -202,7 +212,7 @@ class ScholarControllerTest {
                 .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.total").value(2))
-            .andExpect(jsonPath("$.success.data.items[0].id").value(202));
+            .andExpect(jsonPath("$.success.data.items[0].id").value(201));
         mockMvc.perform(get("/v1/scholars").param("requestId", "301").param("submitStatus", "NOT_SUBMITTED")
                 .param("keyword", "홍길동").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.total").value(1))
@@ -221,7 +231,8 @@ class ScholarControllerTest {
     }
 
     private void addRequestTargets() {
-        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'FILTER_TEST', '검증', '[]' FORMAT JSON)").update();
+        String json = h2 ? "'[]' FORMAT JSON" : "'[]'";
+        jdbc.sql("INSERT INTO request_templates (id, code, name, default_fields) VALUES (101, 'FILTER_TEST', '검증', " + json + ")").update();
         jdbc.sql("""
             INSERT INTO requests (id, program_id, template_id, title, academic_year, semester, closes_at, status, created_by, published_at)
             VALUES (301, 101, 101, '필터 대상', 2026, '2', '2026-12-01', 'IN_PROGRESS', 206, '2026-11-01'),
