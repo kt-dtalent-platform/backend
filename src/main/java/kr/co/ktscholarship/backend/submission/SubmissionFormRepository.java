@@ -31,11 +31,12 @@ public class SubmissionFormRepository {
         this.mapper = mapper;
     }
 
-    public Optional<Request> findRequest(long requestId) {
+    public Optional<Request> findRequest(long requestId, long scholarId) {
         return jdbc.sql("""
-            SELECT id, title, description, closes_at, status FROM requests
-            WHERE id = :id AND status IN ('IN_PROGRESS', 'CLOSED') AND published_at IS NOT NULL
-            """).param("id", requestId)
+            SELECT r.id, r.title, r.description, COALESCE(t.extended_due_at,r.closes_at) AS closes_at, r.status
+            FROM requests r LEFT JOIN request_targets t ON t.request_id=r.id AND t.scholar_id=:scholar
+            WHERE r.id=:id AND r.status IN ('IN_PROGRESS','CLOSED') AND r.published_at IS NOT NULL
+            """).param("id", requestId).param("scholar",scholarId)
             .query((row, index) -> new Request(
                 row.getLong("id"), row.getString("title"), row.getString("description"),
                 UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class)), row.getString("status")

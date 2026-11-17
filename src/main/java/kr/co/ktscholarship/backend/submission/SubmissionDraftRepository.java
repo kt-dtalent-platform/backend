@@ -38,9 +38,12 @@ public class SubmissionDraftRepository {
             .param("request", requestId).param("scholar", scholarId).query(Long.class).optional().isPresent();
     }
 
-    Optional<Request> findRequest(long id) {
-        return jdbc.sql("SELECT status, closes_at FROM requests WHERE id = :id AND published_at IS NOT NULL AND status <> 'DRAFT'")
-            .param("id", id).query((rs, n) -> new Request(rs.getString("status"),
+    Optional<Request> findRequest(long id, long scholar) {
+        return jdbc.sql("""
+            SELECT r.status, COALESCE(t.extended_due_at,r.closes_at) AS closes_at FROM requests r
+            LEFT JOIN request_targets t ON t.request_id=r.id AND t.scholar_id=:scholar
+            WHERE r.id=:id AND r.published_at IS NOT NULL AND r.status<>'DRAFT'
+            """).param("id", id).param("scholar",scholar).query((rs, n) -> new Request(rs.getString("status"),
                 UtcDateTimes.fromDb(rs.getObject("closes_at", LocalDateTime.class)))).optional();
     }
 

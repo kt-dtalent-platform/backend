@@ -35,9 +35,12 @@ public class SubmissionFinalRepository {
                 UtcDateTimes.fromDb(r.getObject("submitted_at",LocalDateTime.class)))).optional();
     }
 
-    Optional<Request> request(long id) {
-        return jdbc.sql("SELECT status,closes_at,completion_message FROM requests WHERE id=:id AND published_at IS NOT NULL AND status<>'DRAFT'")
-            .param("id",id).query((r,n)->new Request(r.getString("status"),UtcDateTimes.fromDb(r.getObject("closes_at",LocalDateTime.class)),r.getString("completion_message"))).optional();
+    Optional<Request> request(long id,long scholar) {
+        return jdbc.sql("""
+            SELECT r.status,COALESCE(t.extended_due_at,r.closes_at) AS closes_at,r.completion_message
+            FROM requests r LEFT JOIN request_targets t ON t.request_id=r.id AND t.scholar_id=:scholar
+            WHERE r.id=:id AND r.published_at IS NOT NULL AND r.status<>'DRAFT'
+            """).param("id",id).param("scholar",scholar).query((r,n)->new Request(r.getString("status"),UtcDateTimes.fromDb(r.getObject("closes_at",LocalDateTime.class)),r.getString("completion_message"))).optional();
     }
 
     Optional<Revision> revision(long submission) {
