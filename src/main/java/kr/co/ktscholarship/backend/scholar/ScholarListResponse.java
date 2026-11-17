@@ -9,7 +9,8 @@ public record ScholarListResponse(
     @Schema(name = "ScholarListItem")
     public record Item(
         long id, String name, String email, String maskedPhone, String cohortName,
-        String university, String status, String accountStatus
+        String university, String status, String accountStatus,
+        Integer completedYear, String withdrawalReason, String withdrawalReasonDetail
     ) {
     }
 }

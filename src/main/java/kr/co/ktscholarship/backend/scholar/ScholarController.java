@@ -26,7 +26,7 @@ public class ScholarController {
     public ApiResponse<ScholarListResponse> getScholars(
         @RequestParam(name = "cohortId", required = false) @Positive Long cohortId,
         @RequestParam(name = "status", required = false)
-        @Pattern(regexp = "ENROLLED|LEAVE|GRADUATED|WITHDRAWN") String status,
+        @Pattern(regexp = "ENROLLED|LEAVE|COMPLETED|GRADUATED|WITHDRAWN") String status,
         @RequestParam(name = "keyword", required = false) String keyword,
         @RequestParam(name = "requestId", required = false) @Positive Long requestId,
         @RequestParam(name = "submitStatus", required = false)
