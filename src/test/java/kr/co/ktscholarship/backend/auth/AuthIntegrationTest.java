@@ -83,6 +83,8 @@ class AuthIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        // 장학생 프로필이 사용자를 참조하므로 먼저 지운다 (@Transactional 테스트는 이 정리도 같은 트랜잭션 안에서 돈다)
+        jdbcTemplate.update("DELETE FROM scholar_profiles");
         jdbcTemplate.update("DELETE FROM users");
     }
 
@@ -294,8 +296,35 @@ class AuthIntegrationTest {
                     .andExpect(jsonPath("$.success.data.name").value("장학생"))
                     .andExpect(jsonPath("$.success.data.email").value("scholar@kt.com"))
                     .andExpect(jsonPath("$.success.data.role").value("SCHOLAR"))
+                    // 프로필이 없는 장학생은 기수·학교 모두 비어 있다 (오류 아님)
                     .andExpect(jsonPath("$.success.data.cohort").doesNotExist())
+                    .andExpect(jsonPath("$.success.data.university").doesNotExist())
                     .andExpect(jsonPath("$.success.data.accessiblePrograms").doesNotExist());
+        }
+
+        @Test
+        @Transactional
+        void 장학생은_자기_기수와_학교를_조회한다() throws Exception {
+            jdbcTemplate.update("INSERT INTO programs (id, name) VALUES (10, '첫 번째 사업')");
+            jdbcTemplate.update("INSERT INTO cohorts (id, program_id, name) VALUES (16, 10, '6기')");
+            jdbcTemplate.update(
+                    "INSERT INTO scholar_profiles (user_id, cohort_id, school_name) VALUES (2, 16, '한국대학교 (세종캠퍼스)')");
+
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("2", "SCHOLAR")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.cohort.id").value(16))
+                    .andExpect(jsonPath("$.success.data.cohort.name").value("6기"))
+                    .andExpect(jsonPath("$.success.data.university").value("한국대학교 (세종캠퍼스)"))
+                    .andExpect(jsonPath("$.success.data.accessiblePrograms").doesNotExist());
+        }
+
+        @Test
+        @Transactional
+        void 담당자는_기수와_학교가_비어_있다() throws Exception {
+            mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, bearer("1", "MANAGER")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.cohort").doesNotExist())
+                    .andExpect(jsonPath("$.success.data.university").doesNotExist());
         }
 
         @Test
