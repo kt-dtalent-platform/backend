@@ -19,6 +19,7 @@ public class ScholarDetailRepository {
             SELECT u.id, u.name, u.email, s.phone, s.school_name, s.major,
                 c.id AS cohort_id, c.name AS cohort_name, s.status,
                 s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail,
+                s.bank_name, s.bank_account_number, s.bank_account_holder,
                 COALESCE(summary.total, 0) AS total, COALESCE(summary.confirmed, 0) AS confirmed
             FROM scholar_profiles s
             JOIN users u ON u.id = s.user_id
@@ -44,7 +45,9 @@ public class ScholarDetailRepository {
                 new ScholarDetailResponse.SubmissionSummary(row.getLong("total"), row.getLong("confirmed"),
                     row.getLong("total") - row.getLong("confirmed")),
                 row.getObject("completed_year", Integer.class), row.getString("withdrawal_reason"),
-                row.getString("withdrawal_reason_detail")
+                row.getString("withdrawal_reason_detail"),
+                row.getString("bank_account_number") == null ? null : new ScholarBankAccount(
+                    row.getString("bank_name"), row.getString("bank_account_number"), row.getString("bank_account_holder"))
             )).optional();
     }
 }
