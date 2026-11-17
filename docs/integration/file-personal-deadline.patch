@@ -1,0 +1,17 @@
+--- a/src/main/java/kr/co/ktscholarship/backend/file/FilePresignRepository.java
++++ b/src/main/java/kr/co/ktscholarship/backend/file/FilePresignRepository.java
+@@ -40,9 +40,11 @@
+ 
+     public RequestState requestState(long requestId, long scholarId) {
+         return jdbc.sql("""
+-            SELECT status, closes_at, published_at,
+-                EXISTS(SELECT 1 FROM request_targets t WHERE t.request_id = r.id AND t.scholar_id = :scholar) AS target
+-            FROM requests r WHERE id = :request
++            SELECT r.status, COALESCE(t.extended_due_at, r.closes_at) AS closes_at, r.published_at,
++                t.id IS NOT NULL AS target
++            FROM requests r
++            LEFT JOIN request_targets t ON t.request_id = r.id AND t.scholar_id = :scholar
++            WHERE r.id = :request
+             """).param("request", requestId).param("scholar", scholarId)
+             .query((rs, n) -> new RequestState(rs.getString("status"),
+                 UtcDateTimes.fromDb(rs.getObject("closes_at", LocalDateTime.class)),
