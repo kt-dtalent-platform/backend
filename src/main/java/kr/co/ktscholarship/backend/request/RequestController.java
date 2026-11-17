@@ -25,10 +25,13 @@ public class RequestController {
 
     private final RequestListRepository listRepository;
     private final RequestService requestService;
+    private final RequestPublishService publishService;
 
-    public RequestController(RequestListRepository listRepository, RequestService requestService) {
+    public RequestController(RequestListRepository listRepository, RequestService requestService,
+                             RequestPublishService publishService) {
         this.listRepository = listRepository;
         this.requestService = requestService;
+        this.publishService = publishService;
     }
 
     @Operation(
@@ -145,5 +148,37 @@ public class RequestController {
         HttpServletRequest request
     ) {
         return ApiResponse.success(requestService.update(requestId, body), request.getRequestURI());
+    }
+
+    @Operation(
+        summary = "요청 공개",
+        description = """
+            작성 중(DRAFT)인 요청을 공개해 진행 중(IN_PROGRESS)으로 바꿉니다. 담당자 전용 API이며, 본문은 없습니다.
+            공개하는 순간 템플릿 항목을 이 요청의 입력 항목으로 복사하고, 대상 장학생을 확정합니다.
+            대상: 기수를 지정했으면 그 기수, 아니면 프로그램의 모든 기수에서 재학(ENROLLED) 중인 장학생.
+            공개 뒤 등록된 장학생은 대상에 들어가지 않습니다.""",
+        responses = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "공개 성공"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400", description = "INVALID_REQUEST - requestId가 올바르지 않습니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401", description = "UNAUTHORIZED - 인증 정보가 없거나 만료되었습니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403", description = "ACCESS_DENIED - 담당자 권한이 필요합니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404", description = "REQUEST_NOT_FOUND - 요청을 찾을 수 없습니다."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409", description = """
+                    REQUEST_NOT_PUBLISHABLE - details로 이유를 알려 줍니다.
+                    status: 이미 공개됐거나 마감됨, closesAt: 마감 시각이 지남,
+                    fields: 템플릿에 입력 항목이 없음, targets: 대상 장학생이 없음.""")
+        }
+    )
+    @PostMapping(value = "/v1/requests/{requestId}/publish", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<RequestPublishResponse> publishRequest(
+        @PathVariable("requestId") @Positive long requestId,
+        HttpServletRequest request
+    ) {
+        return ApiResponse.success(publishService.publish(requestId), request.getRequestURI());
     }
 }
