@@ -16,6 +16,9 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "요청한 리소스를 찾을 수 없습니다."),
     SCHOLAR_NOT_FOUND(HttpStatus.NOT_FOUND, "SCHOLAR_NOT_FOUND", "장학생을 찾을 수 없습니다."),
     REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "REQUEST_NOT_FOUND", "요청을 찾을 수 없거나 아직 공개되지 않았습니다."),
+    SUBMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "제출을 찾을 수 없습니다."),
+    // 검토(확인 완료·보완 요청)는 제출·재제출 상태에서만 할 수 있다
+    SUBMISSION_NOT_REVIEWABLE(HttpStatus.UNPROCESSABLE_CONTENT, "SUBMISSION_NOT_REVIEWABLE", "검토할 수 있는 상태가 아닙니다."),
     NOT_A_TARGET(HttpStatus.FORBIDDEN, "NOT_A_TARGET", "본인이 대상자가 아닌 요청입니다."),
     REQUEST_NOT_EDITABLE(HttpStatus.CONFLICT, "REQUEST_NOT_EDITABLE", "작성 중인 요청만 수정할 수 있습니다."),
     PROGRAM_NOT_FOUND(HttpStatus.NOT_FOUND, "PROGRAM_NOT_FOUND", "프로그램을 찾을 수 없습니다."),
