@@ -2,6 +2,7 @@ package kr.co.ktscholarship.backend.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,6 +78,18 @@ class FilePresignRepositoryTest {
             INSERT INTO revision_request_fields (id, revision_request_id, field_key) VALUES
                 (501, 401, 'receipt'), (502, 402, 'resolved_field'), (503, 403, 'other_field')
             """).update();
+    }
+
+    @Test
+    void usesPersonalDeadlineWithoutExtendingOtherScholars() {
+        jdbc.sql("""
+            INSERT INTO request_targets (request_id, scholar_id, extended_due_at) VALUES
+                (31, 101, '2099-12-31 14:59:59'), (31, 102, NULL)
+            """).update();
+        assertThat(repository.requestState(31, 101).closesAt()).isEqualTo(Instant.parse("2099-12-31T14:59:59Z"));
+        assertThat(repository.requestState(31, 101).target()).isTrue();
+        assertThat(repository.requestState(31, 102).closesAt()).isEqualTo(Instant.parse("2026-11-10T00:00:00Z"));
+        assertThat(repository.requestState(31, 999).target()).isFalse();
     }
 
     @Test
