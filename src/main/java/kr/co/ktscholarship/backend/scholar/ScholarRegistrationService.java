@@ -14,11 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ScholarRegistrationService {
     private final ScholarRegistrationRepository repository;
     private final PasswordEncoder passwordEncoder;
+    private final ScholarSchoolService schoolService;
     private final SecureRandom random = new SecureRandom();
 
-    public ScholarRegistrationService(ScholarRegistrationRepository repository, PasswordEncoder passwordEncoder) {
+    public ScholarRegistrationService(ScholarRegistrationRepository repository, PasswordEncoder passwordEncoder,
+                                      ScholarSchoolService schoolService) {
         this.repository = repository;
         this.passwordEncoder = passwordEncoder;
+        this.schoolService = schoolService;
     }
 
     /** 모든 기수 등록을 허용하고 계정과 프로필을 한 트랜잭션으로 저장한다. */
@@ -27,6 +30,7 @@ public class ScholarRegistrationService {
         if (!repository.cohortExists(request.cohortId())) {
             throw new BusinessException(ErrorCode.COHORT_NOT_FOUND);
         }
+        String schoolName = schoolService.resolveName(request.schoolId(), request.university());
         byte[] bytes = new byte[18];
         random.nextBytes(bytes);
         String temporaryPassword = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -40,7 +44,7 @@ public class ScholarRegistrationService {
             }
             throw exception;
         }
-        repository.insertProfile(id, request);
+        repository.insertProfile(id, request, schoolName);
         return new ScholarCreateResponse(id, UserStatus.ACTIVE.name(), temporaryPassword);
     }
 }

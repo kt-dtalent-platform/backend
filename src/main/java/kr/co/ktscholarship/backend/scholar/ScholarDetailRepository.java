@@ -16,7 +16,7 @@ public class ScholarDetailRepository {
 
     public Optional<ScholarDetailResponse> findById(long scholarId) {
         return jdbc.sql("""
-            SELECT u.id, u.name, u.email, s.phone, s.school_name, s.major,
+            SELECT u.id, u.name, u.email, s.phone, s.school_id, s.school_name, s.major,
                 c.id AS cohort_id, c.name AS cohort_name, s.status,
                 s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail,
                 s.bank_name, s.bank_account_number, s.bank_account_holder,
@@ -47,7 +47,8 @@ public class ScholarDetailRepository {
                 row.getObject("completed_year", Integer.class), row.getString("withdrawal_reason"),
                 row.getString("withdrawal_reason_detail"),
                 row.getString("bank_account_number") == null ? null : new ScholarBankAccount(
-                    row.getString("bank_name"), row.getString("bank_account_number"), row.getString("bank_account_holder"))
+                    row.getString("bank_name"), row.getString("bank_account_number"), row.getString("bank_account_holder")),
+                row.getObject("school_id", Long.class)
             )).optional();
     }
 }

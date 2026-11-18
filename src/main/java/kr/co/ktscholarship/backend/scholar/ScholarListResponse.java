@@ -10,7 +10,7 @@ public record ScholarListResponse(
     public record Item(
         long id, String name, String email, String maskedPhone, String cohortName,
         String university, String status, String accountStatus,
-        Integer completedYear, String withdrawalReason, String withdrawalReasonDetail
+        Integer completedYear, String withdrawalReason, String withdrawalReasonDetail, Long schoolId
     ) {
     }
 }
