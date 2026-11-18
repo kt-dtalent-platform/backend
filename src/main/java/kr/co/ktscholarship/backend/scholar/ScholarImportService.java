@@ -7,38 +7,29 @@ import java.util.List;
 import java.util.Locale;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
-import kr.co.ktscholarship.backend.scholar.ScholarImportExcel.RowError;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ScholarImportService {
-    private final ScholarImportExcel excel;
     private final Validator validator;
     private final ScholarRegistrationService registration;
 
-    public ScholarImportService(ScholarImportExcel excel, Validator validator, ScholarRegistrationService registration) {
-        this.excel = excel;
+    public ScholarImportService(Validator validator, ScholarRegistrationService registration) {
         this.validator = validator;
         this.registration = registration;
     }
 
     @Transactional
-    public ScholarImportResponse register(long cohortId, MultipartFile file) {
-        return registerRows(excel.read(file, cohortId), false);
-    }
-
-    @Transactional
     public ScholarImportResponse register(ScholarBulkCreateRequest request) {
-        List<ScholarImportExcel.ImportRow> rows = new ArrayList<>();
+        List<ImportRow> rows = new ArrayList<>();
         for (int i = 0; i < request.scholars().size(); i++) {
-            rows.add(new ScholarImportExcel.ImportRow(i + 2, request.scholars().get(i).inCohort(request.cohortId())));
+            rows.add(new ImportRow(i + 2, request.scholars().get(i).inCohort(request.cohortId())));
         }
-        return registerRows(rows, true);
+        return registerRows(rows);
     }
 
-    private ScholarImportResponse registerRows(List<ScholarImportExcel.ImportRow> rows, boolean bulk) {
+    private ScholarImportResponse registerRows(List<ImportRow> rows) {
         List<RowError> errors = new ArrayList<>();
         for (var row : rows) {
             validator.validate(row.request()).stream()
@@ -52,8 +43,7 @@ public class ScholarImportService {
         for (var row : rows) {
             if (!emails.add(row.request().email().toLowerCase(Locale.ROOT))) {
                 throw new BusinessException(ErrorCode.DUPLICATE_EMAIL,
-                    bulk ? List.of(row.request().email())
-                        : List.of(new RowError(row.row(), "email", "명단 안에 이메일이 중복됩니다.")));
+                    List.of(row.request().email()));
             }
         }
         List<ScholarImportResponse.Item> items = new ArrayList<>();
@@ -62,7 +52,7 @@ public class ScholarImportService {
                 var created = registration.register(row.request());
                 items.add(new ScholarImportResponse.Item(row.row(), created.id(), row.request().email(), created.temporaryPassword()));
             } catch (BusinessException exception) {
-                if (bulk && exception.getErrorCode() == ErrorCode.DUPLICATE_EMAIL) {
+                if (exception.getErrorCode() == ErrorCode.DUPLICATE_EMAIL) {
                     throw new BusinessException(ErrorCode.DUPLICATE_EMAIL, List.of(row.request().email()));
                 }
                 String field = switch (exception.getErrorCode()) {
@@ -77,4 +67,6 @@ public class ScholarImportService {
         }
         return new ScholarImportResponse(items.size(), items);
     }
+    private record ImportRow(int row, ScholarCreateRequest request) { }
+    public record RowError(int row, String field, String message) { }
 }
