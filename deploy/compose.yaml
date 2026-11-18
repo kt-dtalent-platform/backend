@@ -35,6 +35,8 @@ services:
       S3_ENABLED: ${S3_ENABLED:-false}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_REGION: ${S3_REGION:-ap-northeast-2}
+      # 성적증명서 OCR. 키가 없으면 문서 분석이 꺼진 채로 뜬다
+      UPSTAGE_API_KEY: ${UPSTAGE_API_KEY:-}
       JAVA_TOOL_OPTIONS: -Xmx512m
       TZ: UTC
     ports:
