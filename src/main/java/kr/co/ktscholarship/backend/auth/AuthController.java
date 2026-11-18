@@ -37,7 +37,7 @@ public class AuthController {
         return ApiResponse.success(authService.login(loginRequest), request.getRequestURI());
     }
 
-    @Operation(summary = "내 정보 조회", description = "담당자의 accessiblePrograms는 전체 프로그램의 id·name 목록이며, 프로그램이 없으면 빈 배열입니다. 장학생은 null입니다. cohort는 현재 null입니다.")
+    @Operation(summary = "내 정보 조회", description = "담당자의 accessiblePrograms는 전체 프로그램의 id·name 목록이며, 프로그램이 없으면 빈 배열입니다. 장학생은 null입니다. 장학생은 cohort{id,name}와 university(학교 이름)가 채워지고, 프로필이 없으면 둘 다 null입니다. 담당자는 cohort·university가 null입니다.")
     @GetMapping(value = "/v1/me", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<MeResponse> getMe(@CurrentUserId Long userId, HttpServletRequest request) {
         return ApiResponse.success(authService.getMe(userId), request.getRequestURI());

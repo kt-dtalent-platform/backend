@@ -30,6 +30,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final MeProgramRepository meProgramRepository;
+    private final MeProfileRepository meProfileRepository;
     // 없는 이메일일 때도 해시 비교를 한 번 수행해 응답 시간 차이를 줄인다
     private final String dummyPasswordHash;
 
@@ -37,12 +38,14 @@ public class AuthService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtTokenProvider jwtTokenProvider,
-            MeProgramRepository meProgramRepository
+            MeProgramRepository meProgramRepository,
+            MeProfileRepository meProfileRepository
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.meProgramRepository = meProgramRepository;
+        this.meProfileRepository = meProfileRepository;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
@@ -96,6 +99,11 @@ public class AuthService {
         // 토큰 발급 후 삭제된 계정은 인증 실패로 처리
         User user = userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED));
-        return MeResponse.from(user, user.getRole() == UserRole.MANAGER ? meProgramRepository.findAll() : null);
+        List<MeResponse.Program> programs = user.getRole() == UserRole.MANAGER ? meProgramRepository.findAll() : null;
+        // 장학생만 기수·학교를 채운다. 프로필이 아직 없으면 둘 다 null (화면은 "없음")
+        MeResponse.ScholarProfile profile = user.getRole() == UserRole.SCHOLAR
+                ? meProfileRepository.find(userId).orElse(null)
+                : null;
+        return MeResponse.from(user, programs, profile);
     }
 }
