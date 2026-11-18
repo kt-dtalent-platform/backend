@@ -61,7 +61,7 @@ public class ReviewDecisionController {
         description = """
             제출 전체가 아니라 고칠 항목(fieldKeys)만 골라 보완을 요청합니다. 상태는 보완 필요(REVISION_REQUIRED)가 되고,
             장학생은 보완 재제출 API로 이 항목만 고쳐 다시 냅니다. 담당자 전용 API입니다.
-            dueAt(보완 기한)은 지금은 형식만 검사합니다. 장학생별 연장 마감 기능이 들어오면 재제출 마감으로 연결합니다.""",
+            dueAt(보완 기한)은 비워 둘 수 있고, 보내면 지금보다 뒤여야 합니다(지난 날짜는 400). 아직 저장하지 않으며, 장학생별 연장 마감 기능이 들어오면 재제출 마감으로 연결합니다.""",
         responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "보완 요청 완료"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
