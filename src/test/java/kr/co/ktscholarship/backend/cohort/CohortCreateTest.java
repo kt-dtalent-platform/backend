@@ -61,6 +61,15 @@ class CohortCreateTest {
         mvc.perform(create(9611,body)).andExpect(status().isBadRequest());
         assertThat(jdbc.sql("SELECT COUNT(*) FROM cohorts WHERE program_id=9611").query(Long.class).single()).isZero();
     }
+    @Test void validatesNameLengthAfterStrippingWhitespace() throws Exception {
+        String name = "a".repeat(50);
+        mvc.perform(create(9611,"{\"name\":\"  " + name + "  \"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.success.data.name").value(name));
+        mvc.perform(create(9611,"{\"name\":\"  " + "a".repeat(51) + "  \"}"))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM cohorts WHERE program_id=9611").query(Long.class).single()).isEqualTo(1);
+    }
     @Test void rejectsLongNameAndMissingProgram() throws Exception {
         mvc.perform(create(9611,"{\"name\":\""+"a".repeat(51)+"\"}")).andExpect(status().isBadRequest());
         mvc.perform(create(999999,"{\"name\":\"기수\"}")).andExpect(status().isNotFound())
