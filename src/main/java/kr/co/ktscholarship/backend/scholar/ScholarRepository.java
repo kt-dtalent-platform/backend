@@ -56,7 +56,7 @@ public class ScholarRepository {
         params.addValue("offset", (long) (page - 1) * pageSize);
         var items = jdbc.sql("""
             SELECT u.id, u.name, u.email, s.phone, c.name AS cohort_name,
-                s.school_name, s.status AS scholar_status, u.status AS account_status,
+                s.school_id, s.school_name, s.status AS scholar_status, u.status AS account_status,
                 s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail
             """ + FROM_SQL + " ORDER BY " + orderBy(sort) + " LIMIT :limit OFFSET :offset")
             .paramSource(params)
@@ -65,7 +65,8 @@ public class ScholarRepository {
                 PhoneMasker.mask(row.getString("phone")), row.getString("cohort_name"),
                 row.getString("school_name"), row.getString("scholar_status"),
                 row.getString("account_status"), row.getObject("completed_year", Integer.class),
-                row.getString("withdrawal_reason"), row.getString("withdrawal_reason_detail")
+                row.getString("withdrawal_reason"), row.getString("withdrawal_reason_detail"),
+                row.getObject("school_id", Long.class)
             )).list();
         return new ScholarListResponse(items, page, pageSize, total);
     }

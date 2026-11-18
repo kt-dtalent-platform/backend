@@ -25,13 +25,14 @@ class ScholarRegistrationRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void insertProfile(long userId, ScholarCreateRequest request) {
+    public void insertProfile(long userId, ScholarCreateRequest request, String schoolName) {
         jdbc.sql("""
-                INSERT INTO scholar_profiles (user_id, cohort_id, school_name, phone, major, student_no)
-                VALUES (:userId, :cohortId, :school, :phone, :major, :studentNo)
+                INSERT INTO scholar_profiles (user_id, cohort_id, school_id, school_name, phone, major, student_no)
+                VALUES (:userId, :cohortId, :schoolId, :school, :phone, :major, :studentNo)
                 """)
             .param("userId", userId).param("cohortId", request.cohortId())
-            .param("school", request.university()).param("phone", request.phone())
+            .param("schoolId", request.schoolId())
+            .param("school", schoolName).param("phone", request.phone())
             .param("major", request.major()).param("studentNo", request.studentNo()).update();
     }
 

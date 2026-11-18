@@ -57,7 +57,7 @@ class ScholarCreateRequestTest {
     void rejectsInvalidIdBlankNameInvalidEmailAndOverlongValues() {
         var request = new ScholarCreateRequest(
             0L, " ", "invalid-email", "1".repeat(21),
-            "가".repeat(101), "가".repeat(101), "1".repeat(31)
+            "가".repeat(101), "가".repeat(101), "1".repeat(31), null
         );
 
         assertThat(FACTORY.getValidator().validate(request))
@@ -69,7 +69,7 @@ class ScholarCreateRequestTest {
     void acceptsValuesAtDatabaseLengthLimits() {
         var request = new ScholarCreateRequest(
             6L, "가".repeat(50), "hong@example.test", "1".repeat(20),
-            "가".repeat(100), "가".repeat(100), "1".repeat(30)
+            "가".repeat(100), "가".repeat(100), "1".repeat(30), null
         );
 
         assertThat(FACTORY.getValidator().validate(request)).isEmpty();

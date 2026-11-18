@@ -41,7 +41,7 @@ class ScholarUpdateControllerTest {
     private JdbcClient jdbc;
 
     @Autowired
-    private ScholarUpdateRepository repository;
+    private ScholarUpdateService service;
 
     private MockMvc mockMvc;
 
@@ -115,8 +115,8 @@ class ScholarUpdateControllerTest {
 
     @Test
     void rollsBackNameWhenProfileUpdateFails() {
-        var request = new ScholarUpdateRequest("수정 이름", "1".repeat(21), null, null);
-        assertThatThrownBy(() -> repository.update(201, request))
+        var request = new ScholarUpdateRequest("수정 이름", "1".repeat(21), null, null, null);
+        assertThatThrownBy(() -> service.update(201, request))
             .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(jdbc.sql("SELECT name FROM users WHERE id = 201").query(String.class).single())
