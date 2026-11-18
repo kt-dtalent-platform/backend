@@ -24,7 +24,7 @@ public class SubmissionDraftService {
     @Transactional
     public SubmissionDraftResponse save(long scholarId, long requestId, SubmissionDraftRequest body) {
         boolean target = repository.lockTarget(requestId, scholarId);
-        var request = repository.findRequest(requestId)
+        var request = repository.findRequest(requestId, scholarId)
             .orElseThrow(() -> new BusinessException(ErrorCode.REQUEST_NOT_FOUND));
         if (!target) throw new BusinessException(ErrorCode.NOT_A_TARGET);
         var existing = repository.findSubmission(requestId, scholarId).orElse(null);

@@ -25,7 +25,7 @@ public class SubmissionFormController {
             최초 진입은 submission=null이며 프론트는 미제출·version 0으로 처리합니다.
             수정 가능 항목은 프론트에서 요청 상태·제출 상태·revision.fieldKeys로 계산합니다.
             fields는 sortOrder 순이며 options는 value·label 객체 배열, helpText는 없으면 null입니다.
-            request.requestDueAt은 UTC(Z)이며 별도 보완 기한·개인정보 안내문은 MVP에서 제공하지 않습니다.
+            request.requestDueAt은 본인의 개별 연장을 반영한 UTC(Z)입니다. 별도 보완 기한·개인정보 안내문은 MVP에서 제공하지 않습니다.
             internalMemo와 비공개 S3 저장 키는 포함하지 않습니다.
             """,
         responses = {

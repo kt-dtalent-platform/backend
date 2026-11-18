@@ -23,7 +23,7 @@ public class SubmissionFinalService {
     public Result submit(long user,long requestId,SubmissionDraftRequest body,boolean resubmit) {
         boolean target=drafts.lockTarget(requestId,user);
         var previous=repository.lock(requestId,user).orElse(null);
-        var request=repository.request(requestId).orElseThrow(()->new BusinessException(ErrorCode.REQUEST_NOT_FOUND));
+        var request=repository.request(requestId,user).orElseThrow(()->new BusinessException(ErrorCode.REQUEST_NOT_FOUND));
         if(!target) throw new BusinessException(ErrorCode.NOT_A_TARGET);
         Instant now=Instant.now();
         if(!request.status().equals("IN_PROGRESS") || !now.isBefore(request.closesAt())) throw new BusinessException(ErrorCode.DEADLINE_PASSED);

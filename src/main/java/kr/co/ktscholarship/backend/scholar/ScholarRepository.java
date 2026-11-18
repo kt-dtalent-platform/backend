@@ -40,7 +40,7 @@ public class ScholarRepository {
 
     @Transactional(readOnly = true)
     public ScholarListResponse findAll(
-        Long cohortId, String status, String keyword, Long requestId, String submitStatus, int page, int pageSize
+        Long cohortId, String status, String keyword, Long requestId, String submitStatus, int page, int pageSize, String sort
     ) {
         var params = new MapSqlParameterSource()
             .addValue("requestId", requestId, Types.BIGINT)
@@ -58,7 +58,7 @@ public class ScholarRepository {
             SELECT u.id, u.name, u.email, s.phone, c.name AS cohort_name,
                 s.school_name, s.status AS scholar_status, u.status AS account_status,
                 s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail
-            """ + FROM_SQL + " ORDER BY u.id LIMIT :limit OFFSET :offset")
+            """ + FROM_SQL + " ORDER BY " + orderBy(sort) + " LIMIT :limit OFFSET :offset")
             .paramSource(params)
             .query((row, index) -> new ScholarListResponse.Item(
                 row.getLong("id"), row.getString("name"), row.getString("email"),
@@ -68,5 +68,19 @@ public class ScholarRepository {
                 row.getString("withdrawal_reason"), row.getString("withdrawal_reason_detail")
             )).list();
         return new ScholarListResponse(items, page, pageSize, total);
+    }
+
+    private String orderBy(String sort) {
+        if (sort == null) return "c.started_on DESC, c.created_at DESC, c.id DESC, u.name ASC, u.id ASC";
+        String[] parts = sort.split(",");
+        String column = switch (parts[0]) {
+            case "name" -> "u.name";
+            case "cohort" -> "c.name";
+            case "university" -> "s.school_name";
+            case "status" -> "s.status";
+            case "email" -> "u.email";
+            default -> throw new IllegalArgumentException("지원하지 않는 정렬 항목");
+        };
+        return column + (parts[1].equals("desc") ? " DESC" : " ASC") + ", u.id ASC";
     }
 }

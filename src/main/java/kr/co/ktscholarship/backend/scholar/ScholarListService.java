@@ -15,10 +15,10 @@ public class ScholarListService {
     }
 
     public ScholarListResponse findAll(Long cohortId, String status, String keyword,
-        Long requestId, String submitStatus, int page, int pageSize) {
+        Long requestId, String submitStatus, int page, int pageSize, String sort) {
         if ((requestId == null) != (submitStatus == null)) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "requestId와 submitStatus를 함께 지정해 주세요.");
         }
-        return repository.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize);
+        return repository.findAll(cohortId, status, keyword, requestId, submitStatus, page, pageSize, sort);
     }
 }
