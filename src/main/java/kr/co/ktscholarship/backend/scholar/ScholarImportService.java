@@ -3,6 +3,7 @@ package kr.co.ktscholarship.backend.scholar;
 import jakarta.validation.Validator;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
@@ -13,10 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ScholarImportService {
     private final Validator validator;
+    private final ScholarRegistrationRepository repository;
     private final ScholarRegistrationService registration;
 
-    public ScholarImportService(Validator validator, ScholarRegistrationService registration) {
+    public ScholarImportService(Validator validator, ScholarRegistrationService registration, ScholarRegistrationRepository repository) {
         this.validator = validator;
+        this.repository = repository;
         this.registration = registration;
     }
 
@@ -40,11 +43,22 @@ public class ScholarImportService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, errors);
         }
         var emails = new HashSet<String>();
+        var duplicates = new LinkedHashSet<String>();
         for (var row : rows) {
             if (!emails.add(row.request().email().toLowerCase(Locale.ROOT))) {
-                throw new BusinessException(ErrorCode.DUPLICATE_EMAIL,
-                    List.of(row.request().email()));
+                duplicates.add(row.request().email());
             }
+        }
+        var existing = new HashSet<String>();
+        repository.findActiveEmails(List.copyOf(emails))
+            .forEach(email -> existing.add(email.toLowerCase(Locale.ROOT)));
+        for (var row : rows) {
+            if (existing.contains(row.request().email().toLowerCase(Locale.ROOT))) {
+                duplicates.add(row.request().email());
+            }
+        }
+        if (!duplicates.isEmpty()) {
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL, List.copyOf(duplicates));
         }
         List<ScholarImportResponse.Item> items = new ArrayList<>();
         for (var row : rows) {

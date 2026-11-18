@@ -87,6 +87,36 @@ class ScholarImportControllerTest {
     }
 
     @Test
+    void bulkJsonReportsAllRequestAndDatabaseDuplicatesBeforeSaving() throws Exception {
+        jdbc.sql("INSERT INTO users (id,name,email,password_hash,role) VALUES (8682,'기존','import-other@example.test','test-only','SCHOLAR')").update();
+        mvc.perform(bulk(List.of(bulkRow("import-first@example.test"),
+                bulkRow("IMPORT-FIRST@example.test"), bulkRow("import-second@example.test"),
+                bulkRow("IMPORT-SECOND@example.test"), bulkRow("import-existing@example.test"),
+                bulkRow("IMPORT-OTHER@example.test"))))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.details.length()").value(4))
+            .andExpect(jsonPath("$.error.details[0]").value("IMPORT-FIRST@example.test"))
+            .andExpect(jsonPath("$.error.details[1]").value("IMPORT-SECOND@example.test"))
+            .andExpect(jsonPath("$.error.details[2]").value("import-existing@example.test"))
+            .andExpect(jsonPath("$.error.details[3]").value("IMPORT-OTHER@example.test"));
+        assertThat(newAccounts()).isEqualTo(1);
+    }
+
+    @Test
+    void bulkJsonReusesDeletedEmailAndRollsBackForUnknownSchool() throws Exception {
+        jdbc.sql("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=8681").update();
+        mvc.perform(bulk(List.of(bulkRow("import-existing@example.test"))))
+            .andExpect(status().isCreated());
+        var invalid = new java.util.HashMap<>(bulkRow("import-second@example.test"));
+        invalid.put("schoolId",999999);
+        mvc.perform(bulk(List.of(bulkRow("import-first@example.test"),invalid)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.details[0].row").value(3))
+            .andExpect(jsonPath("$.error.details[0].field").value("schoolId"));
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM users WHERE email='import-first@example.test'").query(Long.class).single()).isZero();
+    }
+
+    @Test
     void bulkJsonRejectsCaseInsensitiveDuplicatesAndInvalidRowsWithoutSaving() throws Exception {
         mvc.perform(bulk(List.of(bulkRow("import-first@example.test"), bulkRow("IMPORT-FIRST@example.test"))))
             .andExpect(status().isConflict())

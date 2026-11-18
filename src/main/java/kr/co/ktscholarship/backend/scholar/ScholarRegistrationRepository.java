@@ -1,6 +1,7 @@
 package kr.co.ktscholarship.backend.scholar;
 
 import java.util.Locale;
+import java.util.List;
 import java.util.Objects;
 import kr.co.ktscholarship.backend.user.UserStatus;
 import org.springframework.dao.DuplicateKeyException;
@@ -50,6 +51,11 @@ class ScholarRegistrationRepository {
             .param("status", status.name())
             .update(key, "id");
         return Objects.requireNonNull(key.getKey(), "등록한 계정 ID가 없습니다.").longValue();
+    }
+
+    public List<String> findActiveEmails(List<String> emails) {
+        return jdbc.sql("SELECT email FROM users WHERE deleted_at IS NULL AND LOWER(email) IN (:emails)")
+            .param("emails", emails).query(String.class).list();
     }
 
     public boolean isActiveEmailConflict(DuplicateKeyException exception) {
