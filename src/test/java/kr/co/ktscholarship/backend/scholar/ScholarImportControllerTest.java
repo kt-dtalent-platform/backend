@@ -141,6 +141,19 @@ class ScholarImportControllerTest {
     }
 
     @Test
+    void bulkJsonReturnsRowErrorsForNullScholars() throws Exception {
+        mvc.perform(post("/v1/scholars/bulk").contentType("application/json")
+                .content("{\"cohortId\":8606,\"scholars\":[null,null]}")
+                .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.details.length()").value(2))
+            .andExpect(jsonPath("$.error.details[*].row", org.hamcrest.Matchers.containsInAnyOrder(2,3)))
+            .andExpect(jsonPath("$.error.details[0].field").value("scholars"))
+            .andExpect(jsonPath("$.error.details[0].message").isNotEmpty());
+        assertThat(newAccounts()).isZero();
+    }
+
+    @Test
     void bulkJsonAllows500RowsButRejects501BeforeRegistration() throws Exception {
         var rows = new java.util.ArrayList<java.util.Map<String,Object>>();
         for (int i = 0; i < 500; i++) rows.add(bulkRow("invalid"));
