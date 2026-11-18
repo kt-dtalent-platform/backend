@@ -15,12 +15,11 @@ PATCH body: {"dueAt":"2026-12-01T14:59:59Z"}
 
 ## 파일 API 의존성
 
-현재 main에는 S3 PR #53·#62·#59가 아직 머지되지 않아 FilePresignRepository가 없다.
-이 브랜치에 미머지 S3 구현 전체를 복제하지 않았다.
-file-personal-deadline.patch는 선행 S3 코드의 공통 requestState 조회에 개별 마감일을 적용하는 최소 변경이다.
-S3 PR과 이 브랜치가 main에 모인 후 적용해야 업로드 URL 발급·업로드 완료·파일 삭제까지 동일한 기한을 사용한다.
-이 패치는 로컬 통합 검증 브랜치에서 적용·검증했다.
-file-personal-deadline-test.patch는 연장 대상자·비대상자·기한 경과의 업로드/완료/삭제 회귀 테스트다. 선행 코드가 모인 후 두 패치를 함께 검토·적용한다. 적용 전에는 파일 API 연장이 운영에 반영됐다고 표시하지 않는다.
+#78이 main에 머지된 뒤 #53에 FilePresignRepository의 공통 requestState 조회 변경을 적용했다.
+업로드 URL 발급·업로드 완료·파일 삭제는 공통 마감일 대신 해당 장학생의 유효 마감일을 사용한다.
+#62에는 연장 대상자·비대상자·기한 경과의 업로드/완료/삭제 회귀 테스트를 추가했다.
+file-personal-deadline.patch와 file-personal-deadline-test.patch는 적용한 변경의 참고 자료이며 다시 적용할 필요가 없다.
+S3 PR #53 → #62 → #59가 main에 머지되기 전에는 파일 API 연결이 운영에 반영됐다고 표시하지 않는다.
 
 ## migration 순서
 
