@@ -136,6 +136,60 @@ class TranscriptExtractorTest {
         assertThat(TranscriptExtractor.isLabel("평점환산", "평점평균")).isFalse();
         assertThat(TranscriptExtractor.isLabel("총평점평균", "총취득학점")).isFalse();
         assertThat(TranscriptExtractor.isLabel("총취득학점", "취득학점")).isFalse();
+        // 두 글자만 다르지만 뜻이 다른 라벨
+        assertThat(TranscriptExtractor.isLabel("총신청학점", "총취득학점")).isFalse();
+        assertThat(TranscriptExtractor.isLabel("신청학점", "취득학점")).isFalse();
+    }
+
+    @Test
+    void doesNotTakeNextFieldNumberWhenValueIsMissing() {
+        // 학기 평점 숫자를 OCR이 놓친 소계 줄. 옆 칸 "백분율: 82.83"을 평점으로 읽으면 안 된다
+        OcrPage page = new OcrPage(1000, 400, List.of(
+            word("2026학년도", 50, 50), word("1학기", 150, 50),
+            word("취득학점:", 50, 100), word("14.0", 150, 100), word("평점평균:", 250, 100),
+            word("백분율:", 350, 100), word("82.83", 450, 100),
+            word("총취득학점", 50, 300), word("91.0", 150, 300), word("평점평균", 250, 300),
+            word("3.81", 350, 300), word("/", 450, 300), word("4.50", 550, 300),
+            word("위와같이증명함", 50, 360)));
+
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(got.readable()).isTrue();
+        assertThat(got.semesterFound()).isTrue();
+        assertThat(got.semesterCredits()).isEqualByComparingTo("14.0");
+        assertThat(got.semesterGpa()).isNull();
+        assertThat(got.cumulativeGpa()).isEqualByComparingTo("3.81");
+    }
+
+    @Test
+    void findsSemesterOnSecondPage() {
+        // 1페이지: 총계와 증명 문구, 2페이지: 대상 학기 (정윤 실물처럼 학기가 뒤 페이지에 있는 경우)
+        String json = """
+            {"pages":[
+              {"width":1000,"height":1400,"words":[%s,%s,%s,%s,%s,%s]},
+              {"width":1000,"height":1400,"words":[%s,%s,%s,%s,%s,%s]}
+            ]}""".formatted(
+            json("총취득학점", 50, 100), json("91.0", 150, 100), json("평점평균", 250, 100),
+            json("3.81", 350, 100), json("/", 450, 100), json("4.50", 550, 100),
+            json("2026학년도", 50, 50), json("1학기", 150, 50), json("취득학점:", 50, 100),
+            json("14.0", 150, 100), json("평점평균:", 250, 100), json("증명함", 50, 300));
+
+        OcrPage page = UpstageOcrParser.parse(MAPPER, json);
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(page.height()).isEqualTo(2800);
+        assertThat(got.semesterFound()).isTrue();
+        assertThat(got.semesterCredits()).isEqualByComparingTo("14.0");
+    }
+
+    private static OcrPage.Word word(String text, int x, int y) {
+        return new OcrPage.Word(text, x, y, x + 90, y + 20, 0.99);
+    }
+
+    private static String json(String text, int x, int y) {
+        return """
+            {"text":"%s","confidence":0.99,"boundingBox":{"vertices":[{"x":%d,"y":%d},{"x":%d,"y":%d}]}}"""
+            .formatted(text, x, y, x + 90, y + 20);
     }
 
     // ---------- 도움 메서드 ----------

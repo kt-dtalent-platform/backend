@@ -35,6 +35,10 @@ public class AnswerComparator {
             String entered = raw.toString().strip();
             items.add(compareOne(field, entered, extracted));
         }
+        // 온전한 문서에 대상 학기가 없으면 다른 학기 증명서다. 만점만 입력해 학기 항목이 없어도 일치로 보지 않는다
+        if (!items.isEmpty() && extracted.readable() && !extracted.semesterFound()) {
+            return new AnswerComparison(Result.MISMATCH, items);
+        }
         return new AnswerComparison(overall(items), items);
     }
 

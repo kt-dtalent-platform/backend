@@ -12,6 +12,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -75,7 +76,12 @@ public class UpstageOcrClient implements OcrClient {
         if (json == null || json.isBlank()) {
             throw new OcrUnavailableException("OCR_EMPTY_RESPONSE");
         }
-        return UpstageOcrParser.parse(mapper, json);
+        try {
+            return UpstageOcrParser.parse(mapper, json);
+        } catch (JacksonException exception) {
+            // 잘린 응답 등 JSON이 깨졌으면 분석 실패로 남기고 담당자가 원본으로 확인한다
+            throw new OcrUnavailableException("OCR_INVALID_RESPONSE", exception);
+        }
     }
 
     private static SimpleClientHttpRequestFactory requestFactory(Duration timeout) {

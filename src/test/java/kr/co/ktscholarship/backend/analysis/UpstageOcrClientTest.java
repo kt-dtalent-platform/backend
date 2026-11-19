@@ -58,6 +58,19 @@ class UpstageOcrClientTest {
     }
 
     @Test
+    void treatsBrokenJsonAsOcrFailure() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(URL)).andRespond(withSuccess("{\"pages\":[", MediaType.APPLICATION_JSON));
+
+        UpstageOcrClient client = new UpstageOcrClient(builder, MAPPER, "test-key", URL);
+
+        assertThatThrownBy(() -> client.read(new byte[] {1}, "a.pdf"))
+            .isInstanceOf(OcrUnavailableException.class)
+            .hasMessage("OCR_INVALID_RESPONSE");
+    }
+
+    @Test
     void wrapsServiceErrorWithoutLeakingKey() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
