@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
+import kr.co.ktscholarship.backend.user.UserStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +23,7 @@ public class ScholarStatusService {
         var row = rows.getFirst();
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         if (same(row, change)) return new Changed(id, row.updatedAt());
-        repository.update(id, change, now);
+        repository.update(id, change, accountStatus(change), now);
         return new Changed(id, now);
     }
 
@@ -36,7 +37,7 @@ public class ScholarStatusService {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         int updated = 0;
         for (var row : rows) {
-            if (!same(row, change)) { repository.update(row.id(), change, now); updated++; }
+            if (!same(row, change)) { repository.update(row.id(), change, accountStatus(change), now); updated++; }
         }
         return new BulkChanged(updated);
     }
@@ -56,9 +57,14 @@ public class ScholarStatusService {
     }
 
     private boolean same(ScholarStatusRepository.Row row, ScholarStatusRequest change) {
-        return row.status().equals(change.status().name()) && Objects.equals(row.year(), change.completedYear())
+        return row.status().equals(change.status().name()) && row.accountStatus().equals(accountStatus(change).name())
+            && Objects.equals(row.year(), change.completedYear())
             && Objects.equals(row.reason(), change.withdrawalReason() == null ? null : change.withdrawalReason().name())
             && Objects.equals(row.detail(), change.withdrawalReasonDetail());
+    }
+
+    private UserStatus accountStatus(ScholarStatusRequest change) {
+        return change.status() == ScholarStatusRequest.Status.WITHDRAWN ? UserStatus.INACTIVE : UserStatus.ACTIVE;
     }
 
     public record Changed(long id, Instant updatedAt) {}

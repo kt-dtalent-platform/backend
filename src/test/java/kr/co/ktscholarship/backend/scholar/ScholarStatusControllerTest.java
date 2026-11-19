@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import jakarta.persistence.EntityManager;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -28,6 +30,8 @@ import org.springframework.web.context.WebApplicationContext;
 class ScholarStatusControllerTest {
     @Autowired WebApplicationContext context;
     @Autowired JdbcClient jdbc;
+    @Autowired PasswordEncoder encoder;
+    @Autowired EntityManager entityManager;
     MockMvc mvc;
 
     @BeforeEach void seed() {
@@ -72,6 +76,52 @@ class ScholarStatusControllerTest {
         var row=jdbc.sql("SELECT * FROM scholar_profiles WHERE user_id=80002").query().singleRow();
         assertThat(row).containsEntry("status","LEAVE").containsEntry("withdrawal_reason",null)
             .containsEntry("withdrawal_reason_detail",null).containsEntry("completed_year",null);
+        assertThat(accountStatus(80002)).isEqualTo("ACTIVE");
+    }
+
+    @Test void withdrawalBlocksLoginAndReturningToEnrolledAllowsLogin() throws Exception {
+        jdbc.sql("UPDATE users SET password_hash=:hash WHERE id=80002")
+            .param("hash",encoder.encode("test-password-123")).update();
+        mvc.perform(change(80002,"{\"status\":\"WITHDRAWN\",\"withdrawalReason\":\"VOLUNTARY\"}"))
+            .andExpect(status().isOk());
+        assertThat(accountStatus(80002)).isEqualTo("INACTIVE");
+        mvc.perform(get("/v1/scholars/80002").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(jsonPath("$.success.data.status").value("WITHDRAWN"))
+            .andExpect(jsonPath("$.success.data.accountStatus").value("INACTIVE"));
+        mvc.perform(post("/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"status-a@example.test\",\"password\":\"test-password-123\"}"))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("ACCOUNT_DISABLED"));
+        mvc.perform(change(80002,"{\"status\":\"ENROLLED\"}")).andExpect(status().isOk());
+        // 테스트의 공용 트랜잭션 캐시를 비워 실제 별도 로그인 요청과 같은 상태로 확인한다.
+        entityManager.clear();
+        mvc.perform(post("/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"status-a@example.test\",\"password\":\"test-password-123\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.accessToken").isNotEmpty());
+    }
+
+    @Test void completionKeepsLoginEnabled() throws Exception {
+        mvc.perform(change(80002,"{\"status\":\"COMPLETED\",\"completedYear\":2026}"))
+            .andExpect(status().isOk());
+        assertThat(accountStatus(80002)).isEqualTo("ACTIVE");
+    }
+
+    @Test void synchronizesAccountsInBulkAndRepairsAnUnchangedScholarStatus() throws Exception {
+        String body="{\"scholarIds\":[80002,80003],\"status\":\"WITHDRAWN\",\"withdrawalReason\":\"VOLUNTARY\"}";
+        mvc.perform(bulk(body)).andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(2));
+        assertThat(accountStatus(80002)).isEqualTo("INACTIVE");
+        assertThat(accountStatus(80003)).isEqualTo("INACTIVE");
+        jdbc.sql("UPDATE users SET status='ACTIVE' WHERE id=80002").update();
+        mvc.perform(bulk(body)).andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(1));
+        assertThat(accountStatus(80002)).isEqualTo("INACTIVE");
+        mvc.perform(bulk(body)).andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(0));
+        mvc.perform(bulk("{\"scholarIds\":[80002,80003],\"status\":\"LEAVE\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(2));
+        assertThat(accountStatus(80002)).isEqualTo("ACTIVE");
+        assertThat(accountStatus(80003)).isEqualTo("ACTIVE");
+    }
+
+    private String accountStatus(long id) {
+        return jdbc.sql("SELECT status FROM users WHERE id=:id").param("id",id).query(String.class).single();
     }
     @ParameterizedTest @ValueSource(strings={"{}","{\"status\":\"GRADUATED\"}",
         "{\"status\":\"COMPLETED\"}","{\"status\":\"COMPLETED\",\"completedYear\":0}",
@@ -93,9 +143,10 @@ class ScholarStatusControllerTest {
         mvc.perform(bulk(body)).andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(0));
     }
     @Test void missingBulkMemberLeavesEveryProfileUntouched() throws Exception {
-        mvc.perform(bulk("{\"scholarIds\":[80002,99999],\"status\":\"LEAVE\"}"))
+        mvc.perform(bulk("{\"scholarIds\":[80002,99999],\"status\":\"WITHDRAWN\",\"withdrawalReason\":\"VOLUNTARY\"}"))
             .andExpect(status().isNotFound());
         assertThat(jdbc.sql("SELECT status FROM scholar_profiles WHERE user_id=80002").query(String.class).single()).isEqualTo("ENROLLED");
+        assertThat(accountStatus(80002)).isEqualTo("ACTIVE");
     }
     @ParameterizedTest @ValueSource(strings={"[]","[null]","[0]"})
     void rejectsInvalidBulkIds(String ids) throws Exception {
