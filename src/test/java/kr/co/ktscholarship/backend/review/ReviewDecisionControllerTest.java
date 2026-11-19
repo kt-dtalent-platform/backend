@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -145,6 +146,8 @@ class ReviewDecisionControllerTest {
         assertThat(submission(8911).get("status")).isEqualTo("REVISION_REQUIRED");
         assertThat(jdbc.sql("SELECT to_status FROM submission_histories WHERE submission_id = 8911")
             .query(String.class).single()).isEqualTo("REVISION_REQUIRED");
+        // 공통 마감(2099-12-31)보다 이른 보완 기한이라 마감은 그대로
+        assertThat(extendedDueAt(991)).isNull();
     }
 
     // 보완 요청 → 장학생이 그 항목만 고쳐 재제출 (정윤 재제출 API와 연결)
@@ -194,6 +197,77 @@ class ReviewDecisionControllerTest {
             .andExpect(jsonPath("$.error.details", hasItem(field)));
 
         assertUnchanged(8911, "SUBMITTED", 1);
+    }
+
+    // ---------- 보완 기한 → 장학생별 재제출 마감 ----------
+
+    // 마감이 지난 뒤 보완 기한을 주면 그 장학생의 마감이 되어 다시 낼 수 있다
+    @Test
+    void dueAtBecomesScholarDeadlineAfterCommonDeadlinePassed() throws Exception {
+        closeRequest();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","dueAt":"2099-01-31T14:59:59.900Z","version":1}
+                """))
+            .andExpect(status().isOk());
+
+        assertThat(extendedDueAt(991)).isEqualTo(LocalDateTime.parse("2099-01-31T14:59:59"));
+        assertThat(jdbc.sql("""
+            SELECT COUNT(*) FROM audit_logs WHERE action = 'EXTEND_DEADLINE' AND actor_id = 990
+                AND target_id = (SELECT id FROM request_targets WHERE request_id = 891 AND scholar_id = 991)
+            """).query(Long.class).single()).isEqualTo(1L);
+
+        mockMvc.perform(asScholar991(post("/v1/me/submissions/891/resubmit")).content("""
+                {"answers":{"gpa":3.7},"version":2}
+                """))
+            .andExpect(status().isOk());
+        assertThat(submission(8911).get("status")).isEqualTo("RESUBMITTED");
+    }
+
+    // 이미 더 늦게 연장받은 장학생이면 보완 기한이 마감을 줄이지 않는다
+    @Test
+    void earlierDueAtDoesNotShortenExtendedDeadline() throws Exception {
+        jdbc.sql("UPDATE request_targets SET extended_due_at = '2099-12-31 14:59:59' WHERE scholar_id = 991").update();
+        jdbc.sql("UPDATE requests SET closes_at = '2099-06-30 14:59:59' WHERE id = 891").update();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","dueAt":"2099-07-31T14:59:59Z","version":1}
+                """))
+            .andExpect(status().isOk());
+
+        assertThat(extendedDueAt(991)).isEqualTo(LocalDateTime.parse("2099-12-31T14:59:59"));
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM audit_logs WHERE action = 'EXTEND_DEADLINE'")
+            .query(Long.class).single()).isZero();
+    }
+
+    // 마감이 지났는데 보완 기한이 없으면 장학생이 낼 수 없는 보완 요청이라 거절한다
+    @Test
+    void rejectsMissingDueAtAfterDeadlineWithoutChanges() throws Exception {
+        closeRequest();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","version":1}
+                """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.details", hasItem("dueAt")));
+
+        assertUnchanged(8911, "SUBMITTED", 1);
+        assertThat(extendedDueAt(991)).isNull();
+    }
+
+    // 연장 마감이 아직 남아 있으면 공통 마감이 지났어도 보완 기한 없이 보낼 수 있다
+    @Test
+    void allowsMissingDueAtWhileExtendedDeadlineRemains() throws Exception {
+        closeRequest();
+        jdbc.sql("UPDATE request_targets SET extended_due_at = '2099-01-31 14:59:59' WHERE scholar_id = 991").update();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","version":1}
+                """))
+            .andExpect(status().isOk());
+
+        assertThat(extendedDueAt(991)).isEqualTo(LocalDateTime.parse("2099-01-31T14:59:59"));
     }
 
     // ---------- 공통: 상태·version·없음 ----------
@@ -262,6 +336,15 @@ class ReviewDecisionControllerTest {
             .query(Long.class).single()).isZero();
         assertThat(jdbc.sql("SELECT COUNT(*) FROM revision_requests WHERE submission_id = :id").param("id", id)
             .query(Long.class).single()).isZero();
+    }
+
+    private void closeRequest() {
+        jdbc.sql("UPDATE requests SET closes_at = '2026-01-01 00:00:00' WHERE id = 891").update();
+    }
+
+    private LocalDateTime extendedDueAt(long scholarId) {
+        return jdbc.sql("SELECT extended_due_at FROM request_targets WHERE request_id = 891 AND scholar_id = :scholar")
+            .param("scholar", scholarId).query(LocalDateTime.class).optional().orElse(null);
     }
 
     private Map<String, Object> submission(long id) {
