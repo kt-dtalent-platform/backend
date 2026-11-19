@@ -20,7 +20,8 @@ public record SubmissionDetailResponse(
     List<Field> fields,
     Map<String, Object> answers,
     @Schema(description = "업로드가 끝난 파일만. 원본은 원본 보기 주소 API로 연다") List<File> files,
-    @Schema(description = "문서 분석 연결 전까지 null") Object analysis,
+    @Schema(description = "최신 문서 분석 결과. 분석 전이거나 분석 뒤 입력값이 바뀌었으면 null")
+    kr.co.ktscholarship.backend.analysis.AnswerComparison analysis,
     @Schema(description = "상태가 바뀐 순서대로") List<History> history,
     @Schema(description = "보완 요청, 최근 것이 먼저") List<Revision> revisions,
     int version

@@ -1,5 +1,6 @@
 package kr.co.ktscholarship.backend.review;
 
+import kr.co.ktscholarship.backend.analysis.DocumentAnalysisService;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -11,9 +12,12 @@ public class SubmissionReviewService {
 
     private final SubmissionStatusRepository statusRepository;
     private final SubmissionDetailRepository detailRepository;
+    private final DocumentAnalysisService analysisService;
 
     public SubmissionReviewService(SubmissionStatusRepository statusRepository,
-                                   SubmissionDetailRepository detailRepository) {
+                                   SubmissionDetailRepository detailRepository,
+                                   DocumentAnalysisService analysisService) {
+        this.analysisService = analysisService;
         this.statusRepository = statusRepository;
         this.detailRepository = detailRepository;
     }
@@ -42,7 +46,7 @@ public class SubmissionReviewService {
             detailRepository.findFields(base.requestId()),
             base.answers(),
             detailRepository.findUploadedFiles(submissionId),
-            null,
+            analysisService.latestForReview(submissionId).orElse(null),
             detailRepository.findHistory(submissionId),
             detailRepository.findRevisions(submissionId),
             base.version());
