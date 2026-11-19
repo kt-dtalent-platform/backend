@@ -217,7 +217,10 @@ public class TranscriptExtractor {
 
     // ---------- 숫자 읽기 ----------
 
-    /** 라벨 바로 오른쪽(같은 줄, 가까운 거리)의 숫자. "/"를 만나면 그 뒤는 만점이라 멈춘다 */
+    /**
+     * 라벨 바로 오른쪽(같은 줄, 가까운 거리)의 숫자. "/"를 만나면 그 뒤는 만점이라 멈춘다.
+     * 다른 라벨(한글 글자)을 만나도 멈춘다. 이 칸 숫자를 못 읽었을 때 옆 칸 숫자(예: 백분율)를 가져오지 않게
+     */
     private static Found numberAfter(List<OcrPage.Word> line, int labelIndex) {
         OcrPage.Word label = line.get(labelIndex);
         // "취득학점:14.0"처럼 라벨과 숫자가 붙어 읽힌 경우
@@ -227,7 +230,7 @@ public class TranscriptExtractor {
         }
         for (int i = labelIndex + 1; i < line.size(); i++) {
             OcrPage.Word w = line.get(i);
-            if (w.x0() - label.x1() > 200 || w.text().equals("/")) {
+            if (w.x0() - label.x1() > 200 || w.text().equals("/") || hasHangul(w.text())) {
                 return null;
             }
             Matcher slashed = SLASHED.matcher(w.text());
@@ -243,6 +246,10 @@ public class TranscriptExtractor {
             }
         }
         return null;
+    }
+
+    private static boolean hasHangul(String text) {
+        return text.codePoints().anyMatch(c -> c >= 0xAC00 && c <= 0xD7A3);
     }
 
     private static Found attachedNumber(String text, double confidence) {
@@ -308,6 +315,10 @@ public class TranscriptExtractor {
         }
         if (cleaned.startsWith(label)) {
             return true;
+        }
+        // "총신청학점"은 "총취득학점"과 두 글자만 달라 오타 허용에 걸리지만 뜻이 다른 라벨이다
+        if (label.contains("취득") && cleaned.contains("신청")) {
+            return false;
         }
         // "행정평균"처럼 앞 두 글자가 모두 틀려도 "□□평균" 모양이면 평점평균으로 본다 ("평점환산"은 아님)
         if (label.equals("평점평균") && cleaned.substring(0, 4).endsWith("평균")) {

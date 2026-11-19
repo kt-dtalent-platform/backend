@@ -86,6 +86,20 @@ class AnswerComparatorTest {
         assertThat(comparator.compare(Map.of(), READ).overallResult()).isEqualTo(Result.UNREADABLE);
     }
 
+    // 만점만 입력했어도 대상 학기가 없는 문서면 다른 학기 증명서라 불일치
+    @Test
+    void missingSemesterIsMismatchEvenWhenOnlyScaleEntered() {
+        ExtractedTranscript otherSemester = new ExtractedTranscript(true, false,
+            null, null, new BigDecimal("4.50"), new BigDecimal("3.81"), new BigDecimal("91.0"));
+        Map<String, Object> onlyScale = new LinkedHashMap<>();
+        onlyScale.put("gpa_scale", "4.5");
+
+        AnswerComparison result = comparator.compare(onlyScale, otherSemester);
+
+        assertThat(result.overallResult()).isEqualTo(Result.MISMATCH);
+        assertThat(result.comparisons()).extracting("field", "result").containsExactly(tuple("gpa_scale", Result.MATCH));
+    }
+
     private static Map<String, Object> answers(Object gpa, Object scale, Object credits) {
         Map<String, Object> answers = new LinkedHashMap<>();
         answers.put("gpa", gpa);
