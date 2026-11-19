@@ -1,4 +1,8 @@
 package kr.co.ktscholarship.backend.cohort;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +19,24 @@ public class CohortController {
 
     public CohortController(CohortService service) {
         this.service = service;
+    }
+
+    @Operation(summary = "기수 생성", description = "담당자 전용. 이름 필수, 시작일·종료일 선택. 같은 프로그램의 같은 이름은 409입니다.", responses = {
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "생성 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "INVALID_REQUEST"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "UNAUTHORIZED"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "ACCESS_DENIED"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "PROGRAM_NOT_FOUND"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "DUPLICATE_COHORT")
+    })
+    @PostMapping("/v1/programs/{programId}/cohorts")
+    public ResponseEntity<ApiResponse<CohortItem>> create(
+        @PathVariable("programId") long programId,
+        @Valid @RequestBody CohortCreateRequest body,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(201)
+            .body(ApiResponse.success(service.create(programId, body), request.getRequestURI()));
     }
 
     @Operation(summary = "기수 목록 조회", responses = {
