@@ -54,6 +54,14 @@ public class ReviewDecisionRepository {
             .optional();
     }
 
+    /** 제출의 요청·장학생. 한 번 정해지면 바뀌지 않는 값이라 잠그지 않고 읽는다 */
+    public Optional<Owner> findOwner(long submissionId) {
+        return jdbc.sql("SELECT request_id, scholar_id FROM submissions WHERE id = :id")
+            .param("id", submissionId)
+            .query((row, index) -> new Owner(row.getLong("request_id"), row.getLong("scholar_id")))
+            .optional();
+    }
+
     public Set<String> findFieldKeys(long requestId) {
         return jdbc.sql("SELECT field_key FROM request_fields WHERE request_id = :id")
             .param("id", requestId)
@@ -152,6 +160,9 @@ public class ReviewDecisionRepository {
         } catch (JacksonException exception) {
             return Map.of();
         }
+    }
+
+    public record Owner(long requestId, long scholarId) {
     }
 
     public record Target(long id, long requestId, String status, int version, Map<String, Object> answers) {
