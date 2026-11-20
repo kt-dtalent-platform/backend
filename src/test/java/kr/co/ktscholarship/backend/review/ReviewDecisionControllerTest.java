@@ -270,6 +270,37 @@ class ReviewDecisionControllerTest {
         assertThat(extendedDueAt(991)).isEqualTo(LocalDateTime.parse("2099-01-31T14:59:59"));
     }
 
+    // 초 단위로 잘라 저장하면 이미 지난 시각이 되는 기한(이번 초 안의 .999초)은 거절한다
+    @Test
+    void rejectsDueAtThatIsPastOnceTruncatedToSeconds() throws Exception {
+        closeRequest();
+        String dueAt = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusMillis(999).toString();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","dueAt":"%s","version":1}
+                """.formatted(dueAt)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.details", hasItem("dueAt")));
+
+        assertUnchanged(8911, "SUBMITTED", 1);
+        assertThat(extendedDueAt(991)).isNull();
+    }
+
+    // 탈퇴로 대상에서 빠진 장학생의 제출은 보완 기한을 저장할 수 없어 바꾸기 전에 거절한다
+    @Test
+    void rejectsRevisionForDeletedScholarWithoutChanges() throws Exception {
+        jdbc.sql("UPDATE users SET deleted_at = '2026-11-01 00:00:00' WHERE id = 991").update();
+
+        mockMvc.perform(asManager(post("/v1/submissions/8911/revision")).content("""
+                {"fieldKeys":["gpa"],"reason":"평점 다시","dueAt":"2099-01-31T14:59:59Z","version":1}
+                """))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("SUBMISSION_NOT_FOUND"));
+
+        assertUnchanged(8911, "SUBMITTED", 1);
+        assertThat(extendedDueAt(991)).isNull();
+    }
+
     // ---------- 공통: 상태·version·없음 ----------
 
     @ParameterizedTest
