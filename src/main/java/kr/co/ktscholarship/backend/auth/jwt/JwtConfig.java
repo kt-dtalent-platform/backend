@@ -10,6 +10,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import kr.co.ktscholarship.backend.auth.token.AccountTokenValidator;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
@@ -40,13 +43,15 @@ public class JwtConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
     }
 
-    // 토큰 검증: 서명, 만료(exp), 발급자(iss)
+    // 토큰 검증: 서명, 만료(exp), 발급자(iss), 그리고 지금 계정 상태(삭제·사용 중지·비밀번호 변경 전 발급)
     @Bean
-    JwtDecoder jwtDecoder(SecretKey jwtSecretKey, JwtProperties properties) {
+    JwtDecoder jwtDecoder(SecretKey jwtSecretKey, JwtProperties properties, JdbcClient jdbc) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(jwtSecretKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
-        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.issuer()));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(properties.issuer()),
+                new AccountTokenValidator(jdbc)));
         return decoder;
     }
 }

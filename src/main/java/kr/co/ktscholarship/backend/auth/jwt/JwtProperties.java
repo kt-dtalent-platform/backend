@@ -13,6 +13,7 @@ import org.springframework.validation.annotation.Validated;
 public record JwtProperties(
         @NotBlank String secret,
         @NotNull Duration accessTokenExpiration,
+        @NotNull Duration refreshTokenExpiration,
         @NotBlank String issuer
 ) {
 
@@ -20,5 +21,10 @@ public record JwtProperties(
     @AssertTrue(message = "app.jwt.access-token-expiration은 0보다 커야 합니다")
     public boolean isAccessTokenExpirationPositive() {
         return accessTokenExpiration == null || accessTokenExpiration.isPositive();
+    }
+
+    @AssertTrue(message = "app.jwt.refresh-token-expiration은 0보다 커야 합니다")
+    public boolean isRefreshTokenExpirationPositive() {
+        return refreshTokenExpiration == null || refreshTokenExpiration.isPositive();
     }
 }

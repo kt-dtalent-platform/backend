@@ -37,6 +37,7 @@ public enum ErrorCode {
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "접근 권한이 없습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "인증 정보가 없거나 만료되었습니다."),
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "LOGIN_FAILED", "이메일 또는 비밀번호가 올바르지 않습니다."),
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN", "만료되었거나 이미 사용된 토큰입니다. 다시 로그인해 주세요."),
     ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "사용할 수 없는 계정입니다."),
     ACCOUNT_LOCKED(HttpStatus.LOCKED, "ACCOUNT_LOCKED", "잠긴 계정입니다. 담당자에게 문의하세요."),
     // 401은 "로그인 안 됨"이라 프론트가 로그아웃시키므로, 입력 실수는 400으로 응답한다

@@ -45,6 +45,8 @@ class ScholarRegistrationIntegrationTest {
     @AfterEach
     void cleanup() {
         jdbc.update("DELETE FROM scholar_profiles WHERE cohort_id IN (706,707)");
+        // 로그인 확인에서 생긴 refresh token이 사용자를 참조하므로 먼저 지운다
+        jdbc.update("DELETE FROM refresh_tokens WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'registration-%@example.test')");
         jdbc.update("DELETE FROM users WHERE email LIKE 'registration-%@example.test'");
         jdbc.update("DELETE FROM cohorts WHERE id IN (706,707)");
         jdbc.update("DELETE FROM programs WHERE id = 701");
