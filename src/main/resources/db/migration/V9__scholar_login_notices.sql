@@ -10,6 +10,7 @@ CREATE TABLE scholar_login_notices (
     status VARCHAR(20) NOT NULL,
     reissue BOOLEAN NOT NULL DEFAULT FALSE,
     error_code VARCHAR(40) NULL,
+    delivery_token VARCHAR(36) NULL,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_login_notices_scholar FOREIGN KEY (scholar_id) REFERENCES users(id),
     CONSTRAINT fk_login_notices_actor FOREIGN KEY (requested_by) REFERENCES users(id)

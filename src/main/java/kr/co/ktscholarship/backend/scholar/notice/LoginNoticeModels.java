@@ -16,7 +16,7 @@ public final class LoginNoticeModels {
     @Schema(name="LoginNoticeResult")
     public record Result(int queued, List<Item> items) {}
     record Account(long id, String name, String email, boolean passwordChangeRequired, String status) {}
-    record Delivery(long scholarId, String name, String email, String temporaryPassword, Sender sender) {
+    record Delivery(long scholarId, String name, String email, String temporaryPassword, Sender sender, String token) {
         @Override public String toString() { return "LoginNoticeDelivery[scholarId="+scholarId+"]"; }
     }
 }

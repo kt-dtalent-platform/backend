@@ -31,7 +31,7 @@ class LoginNoticeRepository {
             .param("ids",ids).query(Item.class).list();
     }
     void enqueue(long id, long actor, boolean reissue) {
-        jdbc.sql("INSERT INTO scholar_login_notices(scholar_id,requested_by,status,reissue) VALUES(:id,:actor,'PENDING',:reissue) ON DUPLICATE KEY UPDATE requested_by=:actor,status='PENDING',reissue=:reissue,error_code=NULL,updated_at=CURRENT_TIMESTAMP")
+        jdbc.sql("INSERT INTO scholar_login_notices(scholar_id,requested_by,status,reissue) VALUES(:id,:actor,'PENDING',:reissue) ON DUPLICATE KEY UPDATE requested_by=:actor,status='PENDING',reissue=:reissue,error_code=NULL,delivery_token=NULL,updated_at=CURRENT_TIMESTAMP")
             .param("id",id).param("actor",actor).param("reissue",reissue).update();
     }
     Optional<Long> next() {
@@ -48,6 +48,14 @@ class LoginNoticeRepository {
     void status(long id, String status, String error) {
         jdbc.sql("UPDATE scholar_login_notices SET status=:status,error_code=:error,updated_at=CURRENT_TIMESTAMP WHERE scholar_id=:id")
             .param("status",status).param("error",error).param("id",id).update();
+    }
+    void startDelivery(long id, String token) {
+        jdbc.sql("UPDATE scholar_login_notices SET status='SENDING',error_code=NULL,delivery_token=:token,updated_at=CURRENT_TIMESTAMP WHERE scholar_id=:id")
+            .param("token",token).param("id",id).update();
+    }
+    void finishDelivery(long id, String token, String error) {
+        jdbc.sql("UPDATE scholar_login_notices SET status=:status,error_code=:error,updated_at=CURRENT_TIMESTAMP WHERE scholar_id=:id AND status='SENDING' AND delivery_token=:token")
+            .param("status",error==null?"SENT":"FAILED").param("error",error).param("id",id).param("token",token).update();
     }
     void storePassword(long id, String hash) {
         jdbc.sql("UPDATE users SET password_hash=:hash,password_change_required=TRUE,failed_login_count=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=:id")

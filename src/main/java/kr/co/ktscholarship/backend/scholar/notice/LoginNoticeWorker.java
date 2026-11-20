@@ -21,6 +21,7 @@ class LoginNoticeWorker {
         this.mail = mail;
         this.encoder = encoder;
         this.transaction = new TransactionTemplate(manager);
+        this.transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
     @Scheduled(fixedDelayString="${app.login-mail.poll-delay:5000}")
     public void process() {
@@ -38,30 +39,32 @@ class LoginNoticeWorker {
         if (!mail.available()) {
             return false;
         }
-        Delivery delivery=transaction.execute(status->{
+        Attempt attempt=transaction.execute(status->{
             var id=repository.next().orElse(null);
             if (id == null) {
-                return null;
+                return new Attempt(false, null);
             }
             var user=repository.lockAccount(id).orElse(null);
             if (!repository.lockPending(id)) {
-                return null;
+                return new Attempt(false, null);
             }
             var sender=repository.sender().orElse(null);
             if(user==null || !user.status().equals("ACTIVE") || (!user.passwordChangeRequired() && !repository.isReissue(id)) || sender==null) {
                 repository.status(id, "FAILED", "NOT_ELIGIBLE");
-                return null;
+                return new Attempt(true, null);
             }
             char[] chars=new char[12];
             for(int i=0;i<chars.length;i++) chars[i]=ALPHABET[random.nextInt(ALPHABET.length)];
             String password=new String(chars);
             repository.storePassword(id,encoder.encode(password));
-            repository.status(id,"SENDING",null);
-            return new Delivery(id,user.name(),user.email(),password,sender);
+            String token=java.util.UUID.randomUUID().toString();
+            repository.startDelivery(id,token);
+            return new Attempt(true,new Delivery(id,user.name(),user.email(),password,sender,token));
         });
-        if (delivery == null) {
-            return false;
+        if (attempt.delivery() == null) {
+            return attempt.consumed();
         }
+        Delivery delivery=attempt.delivery();
         // 비밀번호 저장 커밋 후에만 발송한다. SMTP 통신 중 DB 잠금은 잡지 않는다.
         String error = null;
         try {
@@ -69,7 +72,8 @@ class LoginNoticeWorker {
         } catch (Exception exception) {
             error = "DELIVERY_FAILED";
         }
-        repository.status(delivery.scholarId(),error==null?"SENT":"FAILED",error);
+        repository.finishDelivery(delivery.scholarId(),delivery.token(),error);
         return true;
     }
+    private record Attempt(boolean consumed, Delivery delivery) {}
 }

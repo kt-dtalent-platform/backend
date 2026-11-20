@@ -106,7 +106,7 @@ class LoginNoticeTest {
     }
     @Test void rechecksEligibilityAfterQueueAndRecoversInterruptedSendingAsUnknown() throws Exception {
         enqueue(false);jdbc.sql("UPDATE users SET password_change_required=FALSE WHERE id=9511").update();
-        assertThat(worker.processOne()).isFalse();verify(mail,never()).send(any(MimeMessage.class));
+        assertThat(worker.processOne()).isTrue();verify(mail,never()).send(any(MimeMessage.class));
         assertThat(repository.notice(9511).orElseThrow().errorCode()).isEqualTo("NOT_ELIGIBLE");
         jdbc.sql("UPDATE scholar_login_notices SET status='SENDING',updated_at='2026-01-01 00:00:00' WHERE scholar_id=9511").update();
         repository.expireInterrupted();
@@ -198,6 +198,15 @@ class LoginNoticeTest {
         verify(mail,times(1)).send(any(MimeMessage.class));
     }
 
+    @Test void ineligibleNoticeDoesNotStopTheBatch() throws Exception {
+        service.enqueue(new LoginNoticeModels.SendRequest(java.util.List.of(9511L,9512L),true),9510);
+        jdbc.sql("UPDATE users SET status='INACTIVE' WHERE id=9511").update();
+        worker.process();
+        assertThat(repository.notice(9511).orElseThrow().errorCode()).isEqualTo("NOT_ELIGIBLE");
+        assertThat(repository.notice(9512).orElseThrow().status()).isEqualTo("SENT");
+        verify(mail,times(1)).send(any(MimeMessage.class));
+    }
+
     @Test void failureBeforePasswordIssueCanBeRetriedNormally() throws Exception {
         enqueue(false);
         jdbc.sql("UPDATE users SET status='INACTIVE' WHERE id=9511").update();
@@ -206,6 +215,22 @@ class LoginNoticeTest {
         enqueue(false);
         worker.processOne();
         assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo("SENT");
+    }
+
+    @ParameterizedTest @ValueSource(strings={"PENDING","SENDING"})
+    void lateCompletionCannotOverwriteANewAttempt(String newerState) throws Exception {
+        enqueue(false);
+        doAnswer(invocation->{
+            jdbc.sql("UPDATE scholar_login_notices SET updated_at='2026-01-01 00:00:00' WHERE scholar_id=9511").update();
+            repository.expireInterrupted();
+            var rejected=service.enqueue(new LoginNoticeModels.SendRequest(java.util.List.of(9511L),false),9510);
+            assertThat(rejected.items().getFirst().errorCode()).isEqualTo("REISSUE_REQUIRED");
+            enqueue(true);
+            if (newerState.equals("SENDING")) repository.startDelivery(9511,"new-attempt");
+            return null;
+        }).when(mail).send(any(MimeMessage.class));
+        worker.processOne();
+        assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo(newerState);
     }
 
     private void enqueue(boolean reissue) throws Exception {
