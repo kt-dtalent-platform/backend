@@ -12,12 +12,15 @@ import org.springframework.stereotype.Component;
  * OCR 단어 좌표에서 성적증명서 값을 찾는다.
  *
  * <p>원칙: 확실하지 않으면 값을 내지 않는다(null = 확인 불가). 틀린 값을 내는 것이 가장 나쁘다.
- * 규칙은 합성 130장·실물 11장 실험(2026-11-17)에서 정리했다.
+ * 규칙은 합성 130장·실물 11장 실험(2026-11-17)과 실물 2장(3단 배치, 2026-11-20)에서 정리했다.
  *
  * <ol>
- *   <li>단어를 y 좌표로 묶어 줄을 만들고, 페이지 가운데로 왼쪽·오른쪽 칸을 나눈다 (2단 성적표)</li>
- *   <li>대상 학기 제목과 같은 칸, 그 아래, 다음 제목 전의 첫 "취득학점 … 평점평균 …" 줄이 학기 소계</li>
- *   <li>누적: "총취득학점 … 평점평균 X / 4.50", 위쪽 표의 "총평점평균" 열, 또는 "평점평균 X / 4.5"</li>
+ *   <li>단어를 y 좌표로 묶어 줄을 만들고, 학기 소계 라벨이 시작하는 x 위치로 칸을 나눈다 (2단·3단 성적표).
+ *       라벨이 한 칸에서만 보이면 페이지 가운데로 나눈다</li>
+ *   <li>대상 학기 제목과 같은 칸, 그 아래, 다음 제목 전의 첫 소계가 학기 소계.
+ *       소계는 "취득학점 … 평점평균 …" 한 줄이거나, "학점계 / 평점계 / 평점평균"처럼 세로로 쌓인 줄</li>
+ *   <li>누적: "총취득학점 … 평점평균 X / 4.50", 위쪽 표의 "총평점평균" 열, 만점이 붙은 "평점평균 X / 4.5",
+ *       또는 아래쪽 표의 "계 · 총평점 · 평균평점" 열 아래 값</li>
  *   <li>라벨은 OCR이 자주 틀려서(평점평균 → 행정평균) 비슷한 글자도 같은 라벨로 본다</li>
  *   <li>숫자 확신도가 0.9 미만이면 확인 불가. "증명" 문구나 총계가 없으면 잘린 문서로 보고 전부 확인 불가</li>
  * </ol>
@@ -35,11 +38,11 @@ public class TranscriptExtractor {
 
     public ExtractedTranscript extract(OcrPage page, TargetSemester target) {
         List<List<OcrPage.Word>> lines = groupLines(page.words());
-        double middle = page.width() / 2.0;
+        Columns columns = Columns.of(lines, page.width());
 
-        List<Header> headers = findHeaders(lines, middle);
-        List<Subtotal> subtotals = findSubtotals(lines, middle);
-        Total total = findTotal(lines);
+        List<Header> headers = findHeaders(lines, columns);
+        List<Subtotal> subtotals = findSubtotals(lines, columns);
+        Total total = findTotal(lines, columns);
 
         boolean complete = page.words().stream().anyMatch(w -> w.text().contains("증명"));
         if (!total.found || !complete) {
@@ -87,28 +90,94 @@ public class TranscriptExtractor {
         return lines;
     }
 
-    // ---------- 학기 제목 "2026학년도 1학기", "2024학년도 여름계절학기" ----------
+    // ---------- 칸 나누기 ----------
 
-    private List<Header> findHeaders(List<List<OcrPage.Word>> lines, double middle) {
+    /**
+     * 학기 소계 라벨("취득학점", "학점계")은 칸마다 왼쪽 끝에 맞춰 찍혀서, 라벨의 x 위치 묶음이 곧 칸의 시작이다.
+     * 학기 제목은 칸 가운데에 찍히는 학교가 있어 기준으로 쓰지 않는다.
+     * 마지막 칸 오른쪽 너머(소계 라벨이 없는 칸, 예: 이수 구분 안내 칸)는 별도 칸으로 둔다
+     */
+    private record Columns(double[] bounds, double rightLimit) {
+
+        static Columns of(List<List<OcrPage.Word>> lines, int width) {
+            List<Integer> starts = new ArrayList<>();
+            for (List<OcrPage.Word> line : lines) {
+                for (OcrPage.Word word : line) {
+                    if (isSubtotalCreditLabel(word.text())) {
+                        starts.add(word.x0());
+                    }
+                }
+            }
+            starts.sort(Comparator.naturalOrder());
+            List<Integer> clusters = new ArrayList<>();
+            for (int i = 0; i < starts.size(); i++) {
+                if (i == 0 || starts.get(i) - starts.get(i - 1) > width * 0.1) {
+                    clusters.add(starts.get(i));
+                }
+            }
+            if (clusters.size() < 2) {
+                // 라벨이 한 칸에서만 보이면 예전처럼 페이지 가운데로 나눈다 (2단 성적표)
+                return new Columns(new double[] {width / 2.0}, Double.MAX_VALUE);
+            }
+            double[] bounds = new double[clusters.size() - 1];
+            for (int i = 1; i < clusters.size(); i++) {
+                int gap = clusters.get(i) - clusters.get(i - 1);
+                // 제목이 라벨보다 조금 왼쪽에서 시작해도 같은 칸에 들도록 여유를 둔다
+                bounds[i - 1] = clusters.get(i) - gap * 0.1;
+            }
+            double width2 = (clusters.getLast() - clusters.getFirst()) / (double) (clusters.size() - 1);
+            return new Columns(bounds, clusters.getLast() + width2);
+        }
+
+        int of(OcrPage.Word word) {
+            if (word.x0() >= rightLimit) {
+                return bounds.length + 1;
+            }
+            int column = 0;
+            while (column < bounds.length && word.x0() >= bounds[column]) {
+                column++;
+            }
+            return column;
+        }
+    }
+
+    // ---------- 학기 제목 "2026학년도 1학기", "(2022학년도 1 학기)", "[ 2024학년도 여름계절학기 ]" ----------
+
+    private List<Header> findHeaders(List<List<OcrPage.Word>> lines, Columns columns) {
         List<Header> headers = new ArrayList<>();
         for (List<OcrPage.Word> line : lines) {
             for (int i = 0; i + 1 < line.size(); i++) {
                 OcrPage.Word word = line.get(i);
-                Matcher year = YEAR.matcher(word.text());
+                Matcher year = YEAR.matcher(unbracket(word.text()));
                 OcrPage.Word next = line.get(i + 1);
                 if (!year.matches() || next.x0() - word.x1() > 60) {
                     continue;
                 }
-                String term = termOf(next.text());
+                String nextText = unbracket(next.text());
+                // "1 학기"처럼 학기 번호와 "학기"가 따로 읽힌 경우
+                if (nextText.matches("[12]") && i + 2 < line.size()
+                        && unbracket(line.get(i + 2).text()).equals("학기")) {
+                    nextText = nextText + "학기";
+                }
+                String term = termOf(nextText);
                 if (term != null) {
                     headers.add(new Header(Integer.parseInt(year.group(1)), term,
-                        column(word, middle), word.centerY()));
+                        columns.of(word), word.centerY()));
                 }
             }
         }
         return headers;
     }
 
+    /** 제목을 감싼 괄호 "(2022학년도", "학기)", "[" 를 뗀다 */
+    private static String unbracket(String text) {
+        return text.replaceAll("^[(\\[]+|[)\\]]+$", "");
+    }
+
+    /**
+     * 학기 이름. 모르는 학기(교류계절학기 등)도 "OTHER"로 제목으로 남겨서 앞 학기의 소계 찾기가 거기서 멈추게 한다.
+     * 이 학기의 소계를 앞 학기 소계로 잘못 가져오지 않게
+     */
     private static String termOf(String text) {
         Matcher regular = REGULAR_TERM.matcher(text);
         if (regular.matches()) {
@@ -122,27 +191,35 @@ public class TranscriptExtractor {
                 return "WINTER";
             }
         }
-        return null;
+        return text.endsWith("학기") ? "OTHER" : null;
     }
 
-    // ---------- 학기 소계 "취득학점: 14.0 평점평균: 3.75" ----------
+    // ---------- 학기 소계 "취득학점: 14.0 평점평균: 3.75" 또는 세로 "학점계 : 18.0 / 평점계 / 평점평균 : 4.17" ----------
 
-    private List<Subtotal> findSubtotals(List<List<OcrPage.Word>> lines, double middle) {
+    private static boolean isSubtotalCreditLabel(String text) {
+        return (isLabel(text, "취득학점") && !isLabel(text, "총취득학점")) || isExactLabel(text, "학점계");
+    }
+
+    private List<Subtotal> findSubtotals(List<List<OcrPage.Word>> lines, Columns columns) {
         List<Subtotal> subtotals = new ArrayList<>();
-        for (List<OcrPage.Word> line : lines) {
+        for (int li = 0; li < lines.size(); li++) {
+            List<OcrPage.Word> line = lines.get(li);
             for (int i = 0; i < line.size(); i++) {
                 OcrPage.Word word = line.get(i);
-                if (!isLabel(word.text(), "취득학점") || isLabel(word.text(), "총취득학점")) {
+                if (!isSubtotalCreditLabel(word.text())) {
                     continue;
                 }
-                int column = column(word, middle);
+                int column = columns.of(word);
                 Found credits = numberAfter(line, i);
                 Found gpa = null;
                 for (int j = i + 1; j < line.size(); j++) {
-                    if (isLabel(line.get(j).text(), "평점평균") && column(line.get(j), middle) == column) {
+                    if (isLabel(line.get(j).text(), "평점평균") && columns.of(line.get(j)) == column) {
                         gpa = numberAfter(line, j);
                         break;
                     }
+                }
+                if (gpa == null) {
+                    gpa = stackedGpa(lines, li, word);
                 }
                 subtotals.add(new Subtotal(column, word.centerY(), credits, gpa));
             }
@@ -150,9 +227,29 @@ public class TranscriptExtractor {
         return subtotals;
     }
 
+    /** 학점 라벨 바로 아래 몇 줄 안에서 같은 x에 시작하는 "평점평균"의 값 (세로로 쌓인 소계) */
+    private static Found stackedGpa(List<List<OcrPage.Word>> lines, int lineIndex, OcrPage.Word creditLabel) {
+        for (int below = lineIndex + 1; below < Math.min(lines.size(), lineIndex + 4); below++) {
+            List<OcrPage.Word> line = lines.get(below);
+            for (int j = 0; j < line.size(); j++) {
+                OcrPage.Word w = line.get(j);
+                if (Math.abs(w.x0() - creditLabel.x0()) > Math.max(20, creditLabel.height())) {
+                    continue;
+                }
+                if (isSubtotalCreditLabel(w.text())) {
+                    return null; // 평점평균 전에 다음 소계가 시작됨
+                }
+                if (isLabel(w.text(), "평점평균")) {
+                    return numberAfter(line, j);
+                }
+            }
+        }
+        return null;
+    }
+
     // ---------- 총계(누적) ----------
 
-    private Total findTotal(List<List<OcrPage.Word>> lines) {
+    private Total findTotal(List<List<OcrPage.Word>> lines, Columns columns) {
         Total total = new Total();
         for (List<OcrPage.Word> line : lines) {
             for (int i = 0; i < line.size(); i++) {
@@ -164,9 +261,17 @@ public class TranscriptExtractor {
                         total.credits = credits;
                     }
                 }
+                if (isExactLabel(text, "평균평점") && line.stream().anyMatch(w -> isExactLabel(w.text(), "총평점"))) {
+                    // 아래쪽 표 "계 | 총평점 | 평균평점" 머리줄 → 각 열 아래 값 (덕성여대형)
+                    total.found = true;
+                    readSummaryTable(lines, line, line.get(i), total);
+                    continue;
+                }
                 boolean cumulativeLabel = isLabel(text, "총평점평균");
-                // C형처럼 줄 맨 앞의 "평점평균"도 누적으로 본다 (학기 소계 줄은 "취득학점"으로 시작)
-                boolean leadingGpa = i == 0 && isLabel(text, "평점평균");
+                // C형처럼 줄(칸) 맨 앞의 "평점평균 X / 4.5"도 누적으로 본다.
+                // 만점이 붙어야 한다: 세로로 쌓인 학기 소계("평점평균 : 4.17")도 줄 맨 앞에 오기 때문
+                boolean leading = i == 0 || columns.of(line.get(i - 1)) != columns.of(line.get(i));
+                boolean leadingGpa = leading && isLabel(text, "평점평균") && scaleAfter(line, i) != null;
                 if (!cumulativeLabel && !leadingGpa && !(isLabel(text, "평점평균") && lineHasTotal(line))) {
                     continue;
                 }
@@ -185,9 +290,65 @@ public class TranscriptExtractor {
                 if (scale != null) {
                     total.scale = scale;
                 }
+                if (leadingGpa && total.credits == null) {
+                    // "취득학점 : 148 / 평점평균 : 4.5/4.5"처럼 바로 위에 쌓인 학점 (성신여대형)
+                    total.credits = creditsAbove(lines, line, line.get(i));
+                }
             }
         }
         return total;
+    }
+
+    private static Found creditsAbove(List<List<OcrPage.Word>> lines, List<OcrPage.Word> gpaLine, OcrPage.Word gpaLabel) {
+        int index = lines.indexOf(gpaLine);
+        for (int above = index - 1; above >= Math.max(0, index - 2); above--) {
+            List<OcrPage.Word> line = lines.get(above);
+            for (int j = 0; j < line.size(); j++) {
+                OcrPage.Word w = line.get(j);
+                if (Math.abs(w.x0() - gpaLabel.x0()) <= Math.max(20, gpaLabel.height())
+                        && isLabel(w.text(), "취득학점") && !isLabel(w.text(), "총취득학점")) {
+                    return numberAfter(line, j);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** "계 | 총평점 | 평균평점" 머리줄 아래 줄의 "132.0 | 486.0 | 4.23/4.5" */
+    private void readSummaryTable(List<List<OcrPage.Word>> lines, List<OcrPage.Word> headerLine,
+                                  OcrPage.Word gpaHeader, Total total) {
+        OcrPage.Word below = wordBelow(lines, headerLine, gpaHeader);
+        if (below != null) {
+            Matcher slashed = SLASHED.matcher(below.text());
+            if (slashed.matches() && slashed.group(2) != null) {
+                total.gpa = new Found(decimal(slashed.group(1)), below.confidence());
+                total.scale = new Found(decimal(slashed.group(2)), below.confidence());
+            }
+        }
+        headerLine.stream().filter(w -> w.text().equals("계")).findFirst().ifPresent(sum -> {
+            OcrPage.Word credits = wordBelow(lines, headerLine, sum);
+            BigDecimal n = credits == null ? null : toNumber(credits.text());
+            if (n != null) {
+                total.credits = new Found(n, credits.confidence());
+            }
+        });
+    }
+
+    private static OcrPage.Word wordBelow(List<List<OcrPage.Word>> lines, List<OcrPage.Word> headerLine,
+                                          OcrPage.Word header) {
+        // 표 칸 사이에 다른 줄("교양 54.00 …")이 끼어 있어 줄 수가 아니라 거리로 본다
+        int index = lines.indexOf(headerLine);
+        for (int below = index + 1; below < lines.size(); below++) {
+            for (OcrPage.Word w : lines.get(below)) {
+                if (w.centerY() - header.centerY() > header.height() * 4) {
+                    return null;
+                }
+                if (w.x0() < header.x1() && w.x1() > header.x0()) {
+                    return w;
+                }
+            }
+        }
+        return null;
     }
 
     private static boolean lineHasTotal(List<OcrPage.Word> line) {
@@ -328,6 +489,11 @@ public class TranscriptExtractor {
         return distance(cleaned.substring(0, label.length()), label) <= allowed;
     }
 
+    /** 짧은 라벨("학점계", "평균평점", "총평점")은 오타 허용 없이 그대로 읽힌 경우만 본다 */
+    private static boolean isExactLabel(String text, String label) {
+        return text.replace(":", "").replace(" ", "").equals(label);
+    }
+
     private static int distance(String a, String b) {
         int[] prev = new int[b.length() + 1];
         int[] cur = new int[b.length() + 1];
@@ -345,10 +511,6 @@ public class TranscriptExtractor {
             cur = swap;
         }
         return prev[b.length()];
-    }
-
-    private static int column(OcrPage.Word word, double middle) {
-        return word.x0() < middle ? 0 : 1;
     }
 
     // ---------- 내부 값 ----------
