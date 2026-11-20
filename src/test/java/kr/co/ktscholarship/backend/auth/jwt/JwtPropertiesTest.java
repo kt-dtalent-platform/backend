@@ -27,6 +27,6 @@ class JwtPropertiesTest {
     }
 
     private JwtProperties properties(Duration expiration) {
-        return new JwtProperties("secret", expiration, "kt-scholarship-backend");
+        return new JwtProperties("secret", expiration, java.time.Duration.ofDays(14), "kt-scholarship-backend");
     }
 }

@@ -85,6 +85,7 @@ class AuthIntegrationTest {
     void cleanUp() {
         // 장학생 프로필이 사용자를 참조하므로 먼저 지운다 (@Transactional 테스트는 이 정리도 같은 트랜잭션 안에서 돈다)
         jdbcTemplate.update("DELETE FROM scholar_profiles");
+        jdbcTemplate.update("DELETE FROM refresh_tokens");
         jdbcTemplate.update("DELETE FROM users");
     }
 
@@ -98,6 +99,7 @@ class AuthIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.resultType").value("SUCCESS"))
                     .andExpect(jsonPath("$.success.data.accessToken").isNotEmpty())
+                    .andExpect(jsonPath("$.success.data.refreshToken").isNotEmpty())
                     .andExpect(jsonPath("$.success.data.role").value("MANAGER"))
                     .andExpect(jsonPath("$.success.data.name").value("담당자"))
                     .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false))
@@ -114,11 +116,18 @@ class AuthIntegrationTest {
         }
 
         @Test
-        void 환경변수가_없으면_토큰_만료는_발급_후_2시간() throws Exception {
+        void 환경변수가_없으면_access는_30분_refresh는_14일() throws Exception {
             String body = login("manager@kt.com", PASSWORD).andReturn().getResponse().getContentAsString();
             Jwt token = jwtDecoder.decode(JsonPath.read(body, "$.success.data.accessToken"));
 
-            assertThat(Duration.between(token.getIssuedAt(), token.getExpiresAt())).isEqualTo(Duration.ofHours(2));
+            assertThat(Duration.between(token.getIssuedAt(), token.getExpiresAt())).isEqualTo(Duration.ofMinutes(30));
+            // DB에는 원문이 아니라 해시만 저장된다
+            String refreshToken = JsonPath.read(body, "$.success.data.refreshToken");
+            java.util.Map<String, Object> row = jdbcTemplate.queryForMap(
+                    "SELECT token_hash, created_at, expires_at FROM refresh_tokens WHERE user_id = 1");
+            assertThat(row.get("token_hash")).isNotEqualTo(refreshToken).asString().hasSize(64);
+            assertThat(Duration.between(((java.sql.Timestamp) row.get("created_at")).toInstant(),
+                    ((java.sql.Timestamp) row.get("expires_at")).toInstant())).isEqualTo(Duration.ofDays(14));
         }
 
         @Test
@@ -431,6 +440,148 @@ class AuthIntegrationTest {
 
         private String passwordBody(String currentPassword, String newPassword) {
             return "{\"currentPassword\":\"" + currentPassword + "\",\"newPassword\":\"" + newPassword + "\"}";
+        }
+    }
+
+    @Nested
+    @DisplayName("토큰 재발급·로그아웃")
+    class Refresh {
+
+        @Test
+        void 재발급하면_새_쌍을_주고_쓴_토큰이_다시_오면_그_사용자의_refresh를_모두_끊는다() throws Exception {
+            Tokens first = tokens(login("scholar@kt.com", PASSWORD));
+
+            Tokens second = tokens(refresh(first.refresh()).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.meta.path").value("/v1/auth/refresh")));
+            assertThat(second.refresh()).isNotEqualTo(first.refresh());
+            me(second.access()).andExpect(status().isOk());
+
+            // 이미 쓴 토큰 재사용 → 401, 그리고 새로 받은 토큰까지 폐기
+            expectInvalidRefresh(refresh(first.refresh()));
+            expectInvalidRefresh(refresh(second.refresh()));
+        }
+
+        @Test
+        void 만료된_access_token이_헤더에_붙어_와도_재발급된다() throws Exception {
+            Tokens tokens = tokens(login("scholar@kt.com", PASSWORD));
+            String expired = encode(jwtEncoder, "2", "SCHOLAR", Instant.now().minusSeconds(120));
+
+            mockMvc.perform(post("/v1/auth/refresh")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + expired)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(refreshBody(tokens.refresh())))
+                    .andExpect(status().isOk());
+        }
+
+        @Test
+        void 로그아웃하면_이_기기만_끊기고_다른_기기는_유지된다() throws Exception {
+            Tokens phone = tokens(login("scholar@kt.com", PASSWORD));
+            Tokens laptop = tokens(login("scholar@kt.com", PASSWORD));
+
+            logout(phone.refresh()).andExpect(status().isOk()).andExpect(jsonPath("$.resultType").value("SUCCESS"));
+
+            expectInvalidRefresh(refresh(phone.refresh()));
+            refresh(laptop.refresh()).andExpect(status().isOk());
+        }
+
+        @Test
+        void 없거나_이미_폐기된_토큰의_로그아웃도_200() throws Exception {
+            logout("no-such-token").andExpect(status().isOk());
+            Tokens tokens = tokens(login("scholar@kt.com", PASSWORD));
+            logout(tokens.refresh()).andExpect(status().isOk());
+            logout(tokens.refresh()).andExpect(status().isOk());
+        }
+
+        @Test
+        void 없거나_만료된_refresh_token은_401() throws Exception {
+            expectInvalidRefresh(refresh("no-such-token"));
+
+            Tokens tokens = tokens(login("scholar@kt.com", PASSWORD));
+            jdbcTemplate.update("UPDATE refresh_tokens SET expires_at = '2020-01-01 00:00:00' WHERE user_id = 2");
+            expectInvalidRefresh(refresh(tokens.refresh()));
+        }
+
+        @Test
+        void refreshToken이_비면_400() throws Exception {
+            mockMvc.perform(post("/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+        }
+
+        @Test
+        void 사용_중지된_계정은_기존_access와_refresh_모두_401() throws Exception {
+            Tokens tokens = tokens(login("scholar@kt.com", PASSWORD));
+            jdbcTemplate.update("UPDATE users SET status = 'INACTIVE' WHERE id = 2");
+
+            me(tokens.access()).andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+            expectInvalidRefresh(refresh(tokens.refresh()));
+        }
+
+        @Test
+        void 잠긴_계정은_새_로그인만_막고_이미_로그인한_세션은_유지한다() throws Exception {
+            Tokens tokens = tokens(login("scholar@kt.com", PASSWORD));
+            jdbcTemplate.update("UPDATE users SET status = 'LOCKED' WHERE id = 2");
+
+            me(tokens.access()).andExpect(status().isOk());
+            refresh(tokens.refresh()).andExpect(status().isOk());
+        }
+
+        @Test
+        void 비밀번호를_바꾸면_이전_토큰은_모든_기기에서_끊기고_응답의_새_토큰만_동작한다() throws Exception {
+            Tokens phone = tokens(login("scholar@kt.com", PASSWORD));
+            Tokens laptop = tokens(login("scholar@kt.com", PASSWORD));
+            // 이전 토큰의 발급 시각(초 단위)이 비밀번호 변경 시각보다 확실히 앞서게 한다
+            jdbcTemplate.update("UPDATE refresh_tokens SET created_at = DATEADD('SECOND', -5, created_at) WHERE user_id = 2");
+            String oldAccess = encode(jwtEncoder, "2", "SCHOLAR", Instant.now().plusSeconds(600));
+
+            String body = mockMvc.perform(patch("/v1/auth/password")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + phone.access())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"currentPassword\":\"" + PASSWORD + "\",\"newPassword\":\"newPassword456\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success.data.accessToken").isNotEmpty())
+                    .andExpect(jsonPath("$.success.data.refreshToken").isNotEmpty())
+                    .andReturn().getResponse().getContentAsString();
+            Tokens fresh = new Tokens(JsonPath.read(body, "$.success.data.accessToken"),
+                    JsonPath.read(body, "$.success.data.refreshToken"));
+
+            me(oldAccess).andExpect(status().isUnauthorized());
+            expectInvalidRefresh(refresh(laptop.refresh()));
+            me(fresh.access()).andExpect(status().isOk());
+            refresh(fresh.refresh()).andExpect(status().isOk());
+        }
+
+        private record Tokens(String access, String refresh) {
+        }
+
+        private Tokens tokens(org.springframework.test.web.servlet.ResultActions result) throws Exception {
+            String body = result.andReturn().getResponse().getContentAsString();
+            return new Tokens(JsonPath.read(body, "$.success.data.accessToken"),
+                    JsonPath.read(body, "$.success.data.refreshToken"));
+        }
+
+        private org.springframework.test.web.servlet.ResultActions refresh(String token) throws Exception {
+            return mockMvc.perform(post("/v1/auth/refresh")
+                    .contentType(MediaType.APPLICATION_JSON).content(refreshBody(token)));
+        }
+
+        private org.springframework.test.web.servlet.ResultActions logout(String token) throws Exception {
+            return mockMvc.perform(post("/v1/auth/logout")
+                    .contentType(MediaType.APPLICATION_JSON).content(refreshBody(token)));
+        }
+
+        private org.springframework.test.web.servlet.ResultActions me(String access) throws Exception {
+            return mockMvc.perform(get("/v1/me").header(HttpHeaders.AUTHORIZATION, "Bearer " + access));
+        }
+
+        private String refreshBody(String token) {
+            return "{\"refreshToken\":\"" + token + "\"}";
+        }
+
+        private void expectInvalidRefresh(org.springframework.test.web.servlet.ResultActions result) throws Exception {
+            result.andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_REFRESH_TOKEN"));
         }
     }
 

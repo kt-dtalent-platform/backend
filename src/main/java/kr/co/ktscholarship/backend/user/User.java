@@ -55,6 +55,10 @@ public class User {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    // 이 시각 전에 발급된 access token은 거절한다 (AccountTokenValidator)
+    @Column(name = "tokens_valid_after")
+    private Instant tokensValidAfter;
+
     // 임시 비밀번호로 등록된 계정은 첫 로그인 후 비밀번호를 바꿔야 한다
     @Column(name = "password_change_required", nullable = false)
     private boolean passwordChangeRequired;
@@ -87,14 +91,19 @@ public class User {
         return status;
     }
 
+    public Instant getTokensValidAfter() {
+        return tokensValidAfter;
+    }
+
     public boolean isPasswordChangeRequired() {
         return passwordChangeRequired;
     }
 
-    // 새 비밀번호를 정하면 임시 비밀번호 상태도 끝난다
+    // 새 비밀번호를 정하면 임시 비밀번호 상태도 끝나고, 그 전에 발급된 토큰은 모두 끊긴다
     public void changePassword(String newPasswordHash, Instant changedAt) {
         this.passwordHash = newPasswordHash;
         this.passwordChangeRequired = false;
         this.updatedAt = changedAt;
+        this.tokensValidAfter = changedAt;
     }
 }
