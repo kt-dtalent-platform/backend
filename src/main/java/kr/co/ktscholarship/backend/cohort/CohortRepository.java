@@ -1,4 +1,6 @@
 package kr.co.ktscholarship.backend.cohort;
+import java.util.Objects;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -17,6 +19,16 @@ public class CohortRepository {
         return jdbc.sql("SELECT COUNT(*) FROM programs WHERE id = :programId")
                 .param("programId", programId)
                 .query(Long.class).single() > 0;
+    }
+
+    public long insert(long programId, CohortCreateRequest request) {
+        var key = new GeneratedKeyHolder();
+        jdbc.sql("""
+            INSERT INTO cohorts (program_id, name, started_on, ended_on)
+            VALUES (:programId, :name, :startedOn, :endedOn)
+            """).param("programId", programId).param("name", request.name().strip())
+            .param("startedOn", request.startedOn()).param("endedOn", request.endedOn()).update(key, "id");
+        return Objects.requireNonNull(key.getKey()).longValue();
     }
 
     public List<CohortItem> findByProgramId(long programId) {

@@ -17,7 +17,7 @@ public class ScholarDetailRepository {
     public Optional<ScholarDetailResponse> findById(long scholarId) {
         return jdbc.sql("""
             SELECT u.id, u.name, u.email, s.phone, s.school_id, s.school_name, s.major,
-                c.id AS cohort_id, c.name AS cohort_name, s.status,
+                c.id AS cohort_id, c.name AS cohort_name, s.status, u.status AS account_status,
                 s.completed_year, s.withdrawal_reason, s.withdrawal_reason_detail,
                 s.bank_name, s.bank_account_number, s.bank_account_holder,
                 COALESCE(summary.total, 0) AS total, COALESCE(summary.confirmed, 0) AS confirmed
@@ -41,7 +41,7 @@ public class ScholarDetailRepository {
                 PhoneMasker.mask(row.getString("phone")), row.getString("school_name"),
                 row.getString("major"),
                 new ScholarDetailResponse.Cohort(row.getLong("cohort_id"), row.getString("cohort_name")),
-                row.getString("status"),
+                row.getString("status"), row.getString("account_status"),
                 new ScholarDetailResponse.SubmissionSummary(row.getLong("total"), row.getLong("confirmed"),
                     row.getLong("total") - row.getLong("confirmed")),
                 row.getObject("completed_year", Integer.class), row.getString("withdrawal_reason"),

@@ -84,6 +84,18 @@ class ScholarDetailControllerTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"ACTIVE", "INACTIVE", "LOCKED"})
+    void returnsAccountStatusSeparatelyFromScholarStatus(String accountStatus) throws Exception {
+        jdbc.sql("UPDATE users SET status = :status WHERE id = 201")
+            .param("status", accountStatus).update();
+
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.accountStatus").value(accountStatus))
+            .andExpect(jsonPath("$.success.data.status").value("ENROLLED"));
+    }
+
+    @ParameterizedTest
     @CsvSource({"01012345678, 010-****-5678", "02-1234-5678, 02-****-5678", "123, ****"})
     void masksPhoneWithoutExposingTheOriginal(String phone, String expected) throws Exception {
         jdbc.sql("UPDATE scholar_profiles SET phone = :phone WHERE user_id = 201")
