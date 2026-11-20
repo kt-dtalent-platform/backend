@@ -71,7 +71,12 @@ public class DocumentAnalysisService {
         }
 
         Saved result = saved;
-        Long id = transaction.execute(status -> repository.save(submissionId, fileId, userId, result));
+        Long id = transaction.execute(status -> {
+            // 제출 행을 잠가 같은 제출의 동시 분석을 한 줄로 세운다(회차가 겹치지 않게).
+            // OCR 동안 장학생이 입력값을 바꿨으면 이 결과는 이미 오래된 것이라, 최신 결과를 무효로 만들지 않는다
+            boolean current = enteredValues(repository.lockAnswers(submissionId)).equals(entered);
+            return repository.save(submissionId, fileId, userId, result, current);
+        });
         return toResponse(repository.findById(id).orElseThrow());
     }
 

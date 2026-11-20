@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -164,6 +165,32 @@ class DocumentAnalysisControllerTest {
         // 상세에는 오래된 결과를 보여 주지 않는다
         mockMvc.perform(asManager(get("/v1/submissions/1201")))
             .andExpect(jsonPath("$.success.data.analysis").doesNotExist());
+    }
+
+    // 분석 A가 OCR을 기다리는 동안 장학생이 입력값을 고치고 분석 B가 먼저 끝나면, 늦게 끝난 A가 B를 무효로 만들지 않는다
+    @Test
+    void staleAnalysisDoesNotInvalidateNewerResult() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        given(ocr.read(any(), anyString())).willAnswer(invocation -> {
+            if (calls.getAndIncrement() == 0) {
+                jdbc.sql("UPDATE submissions SET answers = '{\"gpa\":3.75,\"gpa_scale\":\"4.5\",\"credits\":15}' FORMAT JSON WHERE id = 1201").update();
+                mockMvc.perform(asManager(post("/v1/submissions/1201/files/1301/analysis")))
+                    .andExpect(jsonPath("$.success.data.attemptNumber").value(1))
+                    .andExpect(jsonPath("$.success.data.outdated").value(false));
+            }
+            return samplePage();
+        });
+
+        mockMvc.perform(asManager(post("/v1/submissions/1201/files/1301/analysis")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.attemptNumber").value(2))
+            .andExpect(jsonPath("$.success.data.outdated").value(true));
+
+        // 지금 입력값으로 한 회차 1만 유효하고, 상세에도 그 결과(학점 15 ≠ 14.0)가 보인다
+        assertThat(jdbc.sql("SELECT attempt_number FROM document_analysis_results WHERE submission_id = 1201 AND invalidated_at IS NULL")
+            .query(Integer.class).list()).containsExactly(1);
+        mockMvc.perform(asManager(get("/v1/submissions/1201")))
+            .andExpect(jsonPath("$.success.data.analysis.overallResult").value("MISMATCH"));
     }
 
     @Test

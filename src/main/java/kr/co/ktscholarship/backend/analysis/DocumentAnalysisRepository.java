@@ -1,6 +1,7 @@
 package kr.co.ktscholarship.backend.analysis;
 
 import java.sql.DatabaseMetaData;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -63,8 +64,19 @@ public class DocumentAnalysisRepository {
             .optional();
     }
 
-    /** 결과를 새 회차로 저장하고, 같은 제출의 이전 결과는 무효 처리한다. 새 id를 돌려준다 */
-    public long save(long submissionId, long fileId, long requestedBy, Saved saved) {
+    /** 저장 트랜잭션 안에서 제출 행을 잠그고 지금 입력값을 읽는다 */
+    public Map<String, Object> lockAnswers(long submissionId) {
+        return jdbc.sql("SELECT answers FROM submissions WHERE id = :id FOR UPDATE")
+            .param("id", submissionId)
+            .query((row, index) -> readMap(row.getString("answers")))
+            .single();
+    }
+
+    /**
+     * 결과를 새 회차로 저장한다. 새 id를 돌려준다.
+     * current면 같은 제출의 이전 결과를 무효 처리하고, 아니면(분석 중 입력값이 바뀜) 이 결과만 처음부터 무효로 남긴다
+     */
+    public long save(long submissionId, long fileId, long requestedBy, Saved saved, boolean current) {
         int attempt = jdbc.sql("SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM document_analysis_results WHERE file_id = :file")
             .param("file", fileId)
             .query(Integer.class)
@@ -73,9 +85,9 @@ public class DocumentAnalysisRepository {
         jdbc.sql("""
             INSERT INTO document_analysis_results (submission_id, file_id, attempt_number, status, entered_values,
                 extracted_values, comparisons, overall_result, failure_reason, analyzer_version, requested_by,
-                requested_at, completed_at)
+                requested_at, completed_at, invalidated_at)
             VALUES (:submission, :file, :attempt, :status, %s, %s, %s, :overall, :reason, :version, :requestedBy,
-                :requestedAt, :completedAt)
+                :requestedAt, :completedAt, :invalidatedAt)
             """.formatted(jsonParam("entered"), jsonParam("extracted"), jsonParam("comparisons")))
             .param("submission", submissionId)
             .param("file", fileId)
@@ -90,8 +102,12 @@ public class DocumentAnalysisRepository {
             .param("requestedBy", requestedBy)
             .param("requestedAt", UtcDateTimes.toDb(saved.requestedAt()))
             .param("completedAt", UtcDateTimes.toDb(saved.completedAt()))
+            .param("invalidatedAt", current ? null : UtcDateTimes.toDb(saved.completedAt()), Types.TIMESTAMP)
             .update(key, "id");
         long id = Objects.requireNonNull(key.getKey()).longValue();
+        if (!current) {
+            return id;
+        }
         jdbc.sql("""
             UPDATE document_analysis_results SET invalidated_at = :now
             WHERE submission_id = :submission AND id <> :id AND invalidated_at IS NULL
