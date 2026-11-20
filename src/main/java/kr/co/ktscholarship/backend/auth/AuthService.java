@@ -101,15 +101,15 @@ public class AuthService {
                 user.isPasswordChangeRequired());
     }
 
+    private static BusinessException locked(Instant lockedUntil) {
+        return new BusinessException(ErrorCode.ACCOUNT_LOCKED, Map.of("lockedUntil", lockedUntil));
+    }
+
     /**
      * refresh token으로 새 쌍을 준다. 쓴 토큰은 바로 폐기한다(회전).
      * 이미 폐기된 토큰이 다시 오면 탈취를 의심해 그 사용자의 refresh token을 모두 폐기한다.
      * 실패해도 폐기한 기록은 남아야 해서 BusinessException으로는 되돌리지 않는다
      */
-    private static BusinessException locked(Instant lockedUntil) {
-        return new BusinessException(ErrorCode.ACCOUNT_LOCKED, Map.of("lockedUntil", lockedUntil));
-    }
-
     @Transactional(noRollbackFor = BusinessException.class)
     public TokenResponse refresh(String refreshToken) {
         RefreshTokenRepository.Stored stored = refreshTokens.lock(TokenIssuer.hash(refreshToken))
