@@ -9,6 +9,7 @@ import kr.co.ktscholarship.backend.common.exception.BusinessException;
 import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 @Service
 class LoginNoticeService {
@@ -36,7 +37,7 @@ class LoginNoticeService {
         return repository.notices(ids);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     Result enqueue(SendRequest request, long actor) {
         if (!mail.available() || repository.sender().isEmpty()) {
             throw new BusinessException(ErrorCode.MAIL_UNAVAILABLE);
@@ -47,7 +48,7 @@ class LoginNoticeService {
         List<Item> items = new ArrayList<>();
         int queued = 0;
         boolean reissue = Boolean.TRUE.equals(request.reissue());
-        // 발송 처리와 같은 순서로 사용자 행을 잠가 중복 접수와 교착을 방지한다.
+        // 계정 잠금으로 접수를 직렬화하고, READ_COMMITTED로 잠금 획득 후 최신 안내 상태를 읽는다.
         for (long id : request.scholarIds().stream().sorted().toList()) {
             var user = repository.lockAccount(id).orElse(null);
             String error;
@@ -64,8 +65,11 @@ class LoginNoticeService {
             if (error == null && notice != null) {
                 if (List.of("PENDING", "SENDING").contains(notice.status())) {
                     error = "ALREADY_QUEUED";
-                } else if (notice.status().equals("SENT") && !reissue) {
+                } else if (!reissue && notice.status().equals("SENT")) {
                     error = "ALREADY_SENT";
+                } else if (!reissue && List.of("DELIVERY_FAILED", "DELIVERY_UNKNOWN").contains(
+                        notice.errorCode() == null ? "" : notice.errorCode())) {
+                    error = "REISSUE_REQUIRED";
                 }
             }
             if (error != null) {

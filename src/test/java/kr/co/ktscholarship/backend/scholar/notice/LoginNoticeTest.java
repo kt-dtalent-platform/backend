@@ -24,6 +24,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -35,7 +36,8 @@ class LoginNoticeTest {
     @Autowired WebApplicationContext context;
     @Autowired JdbcClient jdbc;
     @Autowired LoginNoticeWorker worker;
-    @Autowired LoginNoticeRepository repository;
+    @MockitoSpyBean LoginNoticeRepository repository;
+    @Autowired LoginNoticeService service;
     @Autowired PasswordEncoder encoder;
     @MockitoBean JavaMailSender mail;
     MockMvc mvc;
@@ -82,12 +84,16 @@ class LoginNoticeTest {
         assertThat(encoder.matches(password,oldHash)).isFalse();
         assertThat(password(messages.getAllValues().get(0))).isNotEqualTo(password);
     }
-    @Test void reportsFailureAndCanRetryWithoutStoringPlaintext() throws Exception {
+    @Test void requiresExplicitReissueAfterDeliveryFailure() throws Exception {
         doThrow(new MailSendException("secret transport detail")).when(mail).send(any(MimeMessage.class));
         enqueue(false); worker.processOne();
         assertThat(repository.notice(9511).orElseThrow()).isEqualTo(new LoginNoticeModels.Item(9511,"FAILED","DELIVERY_FAILED"));
         doNothing().when(mail).send(any(MimeMessage.class));
-        enqueue(false);worker.processOne();
+        mvc.perform(manager(post("/v1/scholars/login-notices"),"{\"scholarIds\":[9511]}"))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.success.data.queued").value(0))
+            .andExpect(jsonPath("$.success.data.items[0].errorCode").value("REISSUE_REQUIRED"));
+        assertThat(worker.processOne()).isFalse();
+        enqueue(true);worker.processOne();
         assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo("SENT");
     }
     @Test void rejectsDuplicateQueueAndSkipsIneligibleAccounts() throws Exception {
@@ -162,6 +168,44 @@ class LoginNoticeTest {
         var user=jdbc.sql("SELECT password_hash,password_change_required FROM users WHERE id=9512").query().singleRow();
         assertThat(encoder.matches(password(message.getValue()),(String)user.get("password_hash"))).isTrue();
         assertThat(user.get("password_change_required")).isEqualTo(true);
+    }
+
+    @Test void waitingRequestReadsTheNoticeCommittedAfterItsSenderLookup() throws Exception {
+        var lookedUp=new java.util.concurrent.CountDownLatch(1);
+        var resume=new java.util.concurrent.CountDownLatch(1);
+        var pause=new java.util.concurrent.atomic.AtomicBoolean(true);
+        doAnswer(invocation->{
+            Object result=invocation.callRealMethod();
+            if (pause.compareAndSet(true,false)) {
+                lookedUp.countDown();
+                assertThat(resume.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            }
+            return result;
+        }).when(repository).sender();
+        try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var waiting=executor.submit(()->service.enqueue(new LoginNoticeModels.SendRequest(java.util.List.of(9511L),false),9510));
+            try {
+                assertThat(lookedUp.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                enqueue(false);
+                worker.processOne();
+            } finally {
+                resume.countDown();
+            }
+            var result=waiting.get(10,java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(result.queued()).isZero();
+            assertThat(result.items().getFirst().errorCode()).isEqualTo("ALREADY_SENT");
+        }
+        verify(mail,times(1)).send(any(MimeMessage.class));
+    }
+
+    @Test void failureBeforePasswordIssueCanBeRetriedNormally() throws Exception {
+        enqueue(false);
+        jdbc.sql("UPDATE users SET status='INACTIVE' WHERE id=9511").update();
+        worker.processOne();
+        jdbc.sql("UPDATE users SET status='ACTIVE' WHERE id=9511").update();
+        enqueue(false);
+        worker.processOne();
+        assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo("SENT");
     }
 
     private void enqueue(boolean reissue) throws Exception {
