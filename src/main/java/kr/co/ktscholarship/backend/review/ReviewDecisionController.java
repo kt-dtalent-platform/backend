@@ -61,12 +61,13 @@ public class ReviewDecisionController {
         description = """
             제출 전체가 아니라 고칠 항목(fieldKeys)만 골라 보완을 요청합니다. 상태는 보완 필요(REVISION_REQUIRED)가 되고,
             장학생은 보완 재제출 API로 이 항목만 고쳐 다시 냅니다. 담당자 전용 API입니다.
-            dueAt(보완 기한)은 비워 둘 수 있고, 보내면 지금보다 뒤여야 합니다(지난 날짜는 400). 아직 저장하지 않으며, 장학생별 연장 마감 기능이 들어오면 재제출 마감으로 연결합니다.""",
+            dueAt(보완 기한)은 그 장학생의 재제출 마감이 됩니다. 장학생의 지금 마감(연장 마감이 있으면 그것)보다 늦을 때만 마감을 바꾸고, 이르면 지금 마감을 그대로 둡니다.
+            마감 전에는 dueAt을 비워 둘 수 있습니다(남은 기간에 재제출). 마감이 지났으면 dueAt이 꼭 있어야 하고, 지난 날짜도 400입니다.""",
         responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "보완 요청 완료"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400", description = """
-                    INVALID_REQUEST - 항목이 비었거나 중복·이 요청에 없는 항목, 사유 없음, 지난 기한입니다.
+                    INVALID_REQUEST - 항목이 비었거나 중복·이 요청에 없는 항목, 사유 없음, 지난 기한, 마감이 지났는데 기한 없음입니다.
                     details에 필드 이름(fieldKeys, reason, dueAt, version)이 담깁니다."""),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "401", description = "UNAUTHORIZED - 인증 정보가 없거나 만료되었습니다."),
