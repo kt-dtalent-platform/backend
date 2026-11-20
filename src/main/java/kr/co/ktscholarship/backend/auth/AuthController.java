@@ -31,7 +31,10 @@ public class AuthController {
 
     @Operation(summary = "로그인", description = """
             이메일·비밀번호로 access token(기본 30분)과 refresh token(기본 14일)을 발급합니다.
-            access token이 만료되면 refresh token으로 /v1/auth/refresh를 호출해 새 쌍을 받습니다.""")
+            access token이 만료되면 refresh token으로 /v1/auth/refresh를 호출해 새 쌍을 받습니다.
+
+            비밀번호를 5번 연속 틀리면 30분 동안 잠깁니다(423 ACCOUNT_LOCKED, error.details.lockedUntil에 풀리는 시각).
+            잠긴 동안은 비밀번호가 맞아도 423이고, 시간이 지나면 저절로 풀립니다. 로그인에 성공하면 실패 횟수는 0으로 돌아갑니다.""")
     @SecurityRequirements // 공개 API: Swagger에서 토큰 없이 호출
     @PostMapping(value = "/v1/auth/login", produces = MediaType.APPLICATION_JSON_VALUE)
     public ApiResponse<LoginResponse> login(

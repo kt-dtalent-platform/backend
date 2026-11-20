@@ -17,6 +17,7 @@ import kr.co.ktscholarship.backend.user.UserStatus;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,6 +34,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenIssuer tokenIssuer;
     private final RefreshTokenRepository refreshTokens;
+    private final LoginAttemptRepository loginAttempts;
     private final MeProgramRepository meProgramRepository;
     private final MeProfileRepository meProfileRepository;
     // 없는 이메일일 때도 해시 비교를 한 번 수행해 응답 시간 차이를 줄인다
@@ -43,6 +45,7 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             TokenIssuer tokenIssuer,
             RefreshTokenRepository refreshTokens,
+            LoginAttemptRepository loginAttempts,
             MeProgramRepository meProgramRepository,
             MeProfileRepository meProfileRepository
     ) {
@@ -50,12 +53,14 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.tokenIssuer = tokenIssuer;
         this.refreshTokens = refreshTokens;
+        this.loginAttempts = loginAttempts;
         this.meProgramRepository = meProgramRepository;
         this.meProfileRepository = meProfileRepository;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-timing");
     }
 
-    @Transactional
+    // 실패 횟수 기록은 로그인 실패 예외로 되돌리지 않는다
+    @Transactional(noRollbackFor = BusinessException.class)
     public LoginResponse login(LoginRequest request) {
         List<User> users = userRepository.findByEmailAndDeletedAtIsNull(request.email());
         if (users.size() > 1) {
@@ -68,16 +73,28 @@ public class AuthService {
             throw new BusinessException(ErrorCode.LOGIN_FAILED);
         }
         User user = users.get(0);
+        // 같은 계정의 동시 로그인에서 실패 횟수가 빠지지 않게 사용자 행을 잠그고 최신 상태를 읽는다
+        LoginAttemptRepository.State state = loginAttempts.lock(user.getId());
+        Instant now = Instant.now();
+        // 잠긴 동안은 비밀번호를 확인하지 않는다. 맞는 비밀번호를 계속 찾아보는 시도 자체를 막는다
+        if (state.lockedAt(now)) {
+            throw locked(state.lockedUntil());
+        }
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            if (state.status() != UserStatus.INACTIVE) {
+                Instant lockedUntil = loginAttempts.recordFailure(user.getId(), state, now);
+                if (lockedUntil != null) {
+                    throw locked(lockedUntil);
+                }
+            }
             throw new BusinessException(ErrorCode.LOGIN_FAILED);
         }
 
-        // 계정 상태는 비밀번호가 맞았을 때만 알려 준다
-        switch (user.getStatus()) {
-            case INACTIVE -> throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
-            case LOCKED -> throw new BusinessException(ErrorCode.ACCOUNT_LOCKED);
-            case ACTIVE -> { }
+        // 사용 중지는 비밀번호가 맞았을 때만 알려 준다
+        if (state.status() == UserStatus.INACTIVE) {
+            throw new BusinessException(ErrorCode.ACCOUNT_DISABLED);
         }
+        loginAttempts.succeed(user.getId(), state);
 
         TokenIssuer.Pair tokens = tokenIssuer.issue(user);
         return new LoginResponse(tokens.accessToken(), tokens.refreshToken(), user.getRole().name(), user.getName(),
@@ -89,6 +106,10 @@ public class AuthService {
      * 이미 폐기된 토큰이 다시 오면 탈취를 의심해 그 사용자의 refresh token을 모두 폐기한다.
      * 실패해도 폐기한 기록은 남아야 해서 BusinessException으로는 되돌리지 않는다
      */
+    private static BusinessException locked(Instant lockedUntil) {
+        return new BusinessException(ErrorCode.ACCOUNT_LOCKED, Map.of("lockedUntil", lockedUntil));
+    }
+
     @Transactional(noRollbackFor = BusinessException.class)
     public TokenResponse refresh(String refreshToken) {
         RefreshTokenRepository.Stored stored = refreshTokens.lock(TokenIssuer.hash(refreshToken))
