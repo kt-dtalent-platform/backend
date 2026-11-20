@@ -23,7 +23,7 @@ public class ScholarStatusService {
         var row = rows.getFirst();
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         if (same(row, change)) return new Changed(id, row.updatedAt());
-        repository.update(id, change, accountStatus(change), now);
+        repository.update(id, change, accountStatus(row, change), now);
         return new Changed(id, now);
     }
 
@@ -37,7 +37,7 @@ public class ScholarStatusService {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         int updated = 0;
         for (var row : rows) {
-            if (!same(row, change)) { repository.update(row.id(), change, accountStatus(change), now); updated++; }
+            if (!same(row, change)) { repository.update(row.id(), change, accountStatus(row, change), now); updated++; }
         }
         return new BulkChanged(updated);
     }
@@ -57,14 +57,16 @@ public class ScholarStatusService {
     }
 
     private boolean same(ScholarStatusRepository.Row row, ScholarStatusRequest change) {
-        return row.status().equals(change.status().name()) && row.accountStatus().equals(accountStatus(change).name())
+        return row.status().equals(change.status().name()) && row.accountStatus().equals(accountStatus(row, change).name())
             && Objects.equals(row.year(), change.completedYear())
             && Objects.equals(row.reason(), change.withdrawalReason() == null ? null : change.withdrawalReason().name())
             && Objects.equals(row.detail(), change.withdrawalReasonDetail());
     }
 
-    private UserStatus accountStatus(ScholarStatusRequest change) {
-        return change.status() == ScholarStatusRequest.Status.WITHDRAWN ? UserStatus.INACTIVE : UserStatus.ACTIVE;
+    private UserStatus accountStatus(ScholarStatusRepository.Row row, ScholarStatusRequest change) {
+        if (change.status() == ScholarStatusRequest.Status.WITHDRAWN) return UserStatus.INACTIVE;
+        // 장학생 상태 변경으로 인증 영역의 잠금을 해제하지 않는다.
+        return row.accountStatus().equals(UserStatus.LOCKED.name()) ? UserStatus.LOCKED : UserStatus.ACTIVE;
     }
 
     public record Changed(long id, Instant updatedAt) {}

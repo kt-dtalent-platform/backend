@@ -120,6 +120,21 @@ class ScholarStatusControllerTest {
         assertThat(accountStatus(80003)).isEqualTo("ACTIVE");
     }
 
+    @ParameterizedTest @ValueSource(strings={"ENROLLED", "LEAVE", "COMPLETED"})
+    void scholarStatusChangeKeepsLockedAccountsLocked(String status) throws Exception {
+        jdbc.sql("UPDATE users SET status='LOCKED' WHERE id IN (80002,80003)").update();
+        String year=status.equals("COMPLETED") ? ",\"completedYear\":2026" : "";
+        mvc.perform(change(80002,"{\"status\":\""+status+"\""+year+"}"))
+            .andExpect(status().isOk());
+        assertThat(accountStatus(80002)).isEqualTo("LOCKED");
+        mvc.perform(bulk("{\"scholarIds\":[80002,80003],\"status\":\""+status+"\""+year+"}"))
+            .andExpect(status().isOk());
+        assertThat(accountStatus(80002)).isEqualTo("LOCKED");
+        assertThat(accountStatus(80003)).isEqualTo("LOCKED");
+        mvc.perform(bulk("{\"scholarIds\":[80002,80003],\"status\":\""+status+"\""+year+"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.updated").value(0));
+    }
+
     private String accountStatus(long id) {
         return jdbc.sql("SELECT status FROM users WHERE id=:id").param("id",id).query(String.class).single();
     }
