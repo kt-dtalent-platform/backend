@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.submission;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = OpenApiConfig.TAG_MY_SUBMISSION)
 @RestController
 public class SubmissionDraftController {
     private final SubmissionDraftService service;

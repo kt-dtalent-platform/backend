@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.review;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 // /v1/submissions/**는 보안 설정에서 로그인만 확인하므로 담당자 검사를 여기서 한다
+@Tag(name = OpenApiConfig.TAG_REVIEW)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 public class ReviewDecisionController {

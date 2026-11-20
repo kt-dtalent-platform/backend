@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.scholar.notice;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import static kr.co.ktscholarship.backend.scholar.notice.LoginNoticeModels.*;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = OpenApiConfig.TAG_SCHOLAR)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 class LoginNoticeController {

@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.review;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = OpenApiConfig.TAG_REVIEW)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 public class SubmissionReviewController {
