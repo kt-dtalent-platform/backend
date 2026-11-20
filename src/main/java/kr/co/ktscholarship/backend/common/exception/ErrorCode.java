@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus;
 
 public enum ErrorCode {
     DUPLICATE_COHORT(HttpStatus.CONFLICT, "DUPLICATE_COHORT", "같은 이름의 기수가 이미 있습니다."),
+    MAIL_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "MAIL_UNAVAILABLE", "메일 연결과 공용 발신 주소를 먼저 설정해 주세요."),
     COHORT_NOT_FOUND(HttpStatus.NOT_FOUND, "COHORT_NOT_FOUND", "기수를 찾을 수 없습니다."),
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "DUPLICATE_EMAIL", "이미 등록된 이메일입니다."),
     DEADLINE_PASSED(HttpStatus.UNPROCESSABLE_CONTENT, "DEADLINE_PASSED", "제출 기한이 지났습니다."),
