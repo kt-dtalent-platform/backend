@@ -14,6 +14,7 @@ public enum ErrorCode {
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "형식이 올바르지 않은 항목이 있습니다."),
     VERSION_CONFLICT(HttpStatus.CONFLICT, "VERSION_CONFLICT", "다른 화면에서 변경되었습니다. 새로고침 후 다시 시도하세요."),
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_NOT_FOUND", "파일을 찾을 수 없습니다."),
+    ANALYSIS_NOT_FOUND(HttpStatus.NOT_FOUND, "ANALYSIS_NOT_FOUND", "분석 결과를 찾을 수 없습니다."),
     FILE_LOCKED(HttpStatus.UNPROCESSABLE_CONTENT, "FILE_LOCKED", "수정할 수 없는 파일입니다."),
     UPLOAD_NOT_FOUND(HttpStatus.BAD_REQUEST, "UPLOAD_NOT_FOUND", "저장소에 파일이 존재하지 않습니다."),
     FILE_MISMATCH(HttpStatus.BAD_REQUEST, "FILE_MISMATCH", "신고한 크기·형식과 실제 파일이 다릅니다."),
