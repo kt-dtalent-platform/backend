@@ -80,7 +80,7 @@ public class AuthService {
         if (state.lockedAt(now)) {
             throw locked(state.lockedUntil());
         }
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (!passwordEncoder.matches(request.password(), state.passwordHash())) {
             if (state.status() != UserStatus.INACTIVE) {
                 Instant lockedUntil = loginAttempts.recordFailure(user.getId(), state, now);
                 if (lockedUntil != null) {
