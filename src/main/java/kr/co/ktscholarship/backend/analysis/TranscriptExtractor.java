@@ -101,12 +101,22 @@ public class TranscriptExtractor {
 
         static Columns of(List<List<OcrPage.Word>> lines, int width) {
             List<Integer> starts = new ArrayList<>();
-            for (List<OcrPage.Word> line : lines) {
-                for (OcrPage.Word word : line) {
-                    if (isSubtotalCreditLabel(word.text())) {
+            List<Integer> all = new ArrayList<>();
+            for (int li = 0; li < lines.size(); li++) {
+                for (OcrPage.Word word : lines.get(li)) {
+                    if (!isSubtotalCreditLabel(word.text())) {
+                        continue;
+                    }
+                    all.add(word.x0());
+                    // 누적 구역("취득학점 148 / 평점평균 4.5/4.5")은 칸 왼쪽 끝이 아닌 곳에 찍히기도 해서 칸 기준에서 뺀다.
+                    // 학기 소계가 모두 이 모양이면(누적과 구분 불가) 전부 쓴다
+                    if (!hasStackedScaledGpa(lines, li, word)) {
                         starts.add(word.x0());
                     }
                 }
+            }
+            if (starts.isEmpty()) {
+                starts = all;
             }
             starts.sort(Comparator.naturalOrder());
             List<Integer> clusters = new ArrayList<>();
@@ -197,7 +207,33 @@ public class TranscriptExtractor {
     // ---------- 학기 소계 "취득학점: 14.0 평점평균: 3.75" 또는 세로 "학점계 : 18.0 / 평점계 / 평점평균 : 4.17" ----------
 
     private static boolean isSubtotalCreditLabel(String text) {
-        return (isLabel(text, "취득학점") && !isLabel(text, "총취득학점")) || isExactLabel(text, "학점계");
+        return (isLabel(text, "취득학점") && !isTotalCreditLabel(text)) || isExactLabel(text, "학점계");
+    }
+
+    /** "총취득학점", "인정학점총계". 콜론 앞 라벨만 본다 ("취득학점:14.0"의 숫자가 오타 허용에 섞여 총계로 보이지 않게) */
+    private static boolean isTotalCreditLabel(String text) {
+        String label = labelOnly(text);
+        return isLabel(label, "총취득학점") || isLabel(label, "인정학점총계");
+    }
+
+    private static String labelOnly(String text) {
+        int colon = text.indexOf(':');
+        return colon < 0 ? text : text.substring(0, colon);
+    }
+
+    /** 학점 라벨 바로 아래(같은 x) 두 줄 안에 만점이 붙은 "평점평균 X / 4.5"가 있는가 (세로로 쌓인 누적 구역 모양) */
+    private static boolean hasStackedScaledGpa(List<List<OcrPage.Word>> lines, int lineIndex, OcrPage.Word creditLabel) {
+        for (int below = lineIndex + 1; below < Math.min(lines.size(), lineIndex + 3); below++) {
+            List<OcrPage.Word> line = lines.get(below);
+            for (int j = 0; j < line.size(); j++) {
+                OcrPage.Word w = line.get(j);
+                if (Math.abs(w.x0() - creditLabel.x0()) <= Math.max(20, creditLabel.height())
+                        && isLabel(w.text(), "평점평균") && scaleAfter(line, j) != null) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<Subtotal> findSubtotals(List<List<OcrPage.Word>> lines, Columns columns) {
@@ -236,8 +272,8 @@ public class TranscriptExtractor {
                 if (Math.abs(w.x0() - creditLabel.x0()) > Math.max(20, creditLabel.height())) {
                     continue;
                 }
-                if (isSubtotalCreditLabel(w.text())) {
-                    return null; // 평점평균 전에 다음 소계가 시작됨
+                if (isSubtotalCreditLabel(w.text()) || isTotalCreditLabel(w.text()) || isLabel(w.text(), "총평점평균")) {
+                    return null; // 평점평균 전에 다음 소계나 총계가 시작됨 (총계의 평점을 학기 평점으로 가져오지 않게)
                 }
                 if (isLabel(w.text(), "평점평균")) {
                     return numberAfter(line, j);
@@ -254,11 +290,12 @@ public class TranscriptExtractor {
         for (List<OcrPage.Word> line : lines) {
             for (int i = 0; i < line.size(); i++) {
                 String text = line.get(i).text();
-                if (isLabel(text, "총취득학점") || isLabel(text, "인정학점총계")) {
+                if (isTotalCreditLabel(text)) {
                     total.found = true;
                     Found credits = numberAfter(line, i);
                     if (credits != null) {
                         total.credits = credits;
+                        total.creditsFromStack = false;
                     }
                 }
                 if (isExactLabel(text, "평균평점") && line.stream().anyMatch(w -> isExactLabel(w.text(), "총평점"))) {
@@ -290,9 +327,18 @@ public class TranscriptExtractor {
                 if (scale != null) {
                     total.scale = scale;
                 }
-                if (leadingGpa && total.credits == null) {
-                    // "취득학점 : 148 / 평점평균 : 4.5/4.5"처럼 바로 위에 쌓인 학점 (성신여대형)
-                    total.credits = creditsAbove(lines, line, line.get(i));
+                if (leadingGpa) {
+                    // "취득학점 : 148 / 평점평균 : 4.5/4.5"처럼 바로 위에 쌓인 학점 (성신여대형).
+                    // 더 아래 후보가 누적이면 평점과 학점을 같은 구역 값으로 함께 바꾼다
+                    // (앞선 학기 소계에도 만점이 있으면 그 학기 학점이 누적 학점으로 남던 문제)
+                    Found above = creditsAbove(lines, line, line.get(i));
+                    if (above != null) {
+                        total.credits = above;
+                        total.creditsFromStack = true;
+                    } else if (total.creditsFromStack) {
+                        total.credits = null;
+                        total.creditsFromStack = false;
+                    }
                 }
             }
         }
@@ -305,8 +351,9 @@ public class TranscriptExtractor {
             List<OcrPage.Word> line = lines.get(above);
             for (int j = 0; j < line.size(); j++) {
                 OcrPage.Word w = line.get(j);
+                // 가장 가까운 학점 라벨만 본다. 바로 위가 "총취득학점"이면 그 값이 누적이고, 그 위 학기 소계로 넘어가지 않는다
                 if (Math.abs(w.x0() - gpaLabel.x0()) <= Math.max(20, gpaLabel.height())
-                        && isLabel(w.text(), "취득학점") && !isLabel(w.text(), "총취득학점")) {
+                        && (isLabel(w.text(), "취득학점") || isTotalCreditLabel(w.text()))) {
                     return numberAfter(line, j);
                 }
             }
@@ -330,6 +377,7 @@ public class TranscriptExtractor {
             BigDecimal n = credits == null ? null : toNumber(credits.text());
             if (n != null) {
                 total.credits = new Found(n, credits.confidence());
+                total.creditsFromStack = false;
             }
         });
     }
@@ -532,5 +580,7 @@ public class TranscriptExtractor {
         Found credits;
         Found gpa;
         Found scale;
+        // credits가 세로로 쌓인 누적 구역에서 온 값인가 (다음 누적 후보가 오면 함께 바꾼다)
+        boolean creditsFromStack;
     }
 }

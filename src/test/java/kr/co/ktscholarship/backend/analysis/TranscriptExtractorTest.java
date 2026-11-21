@@ -235,6 +235,81 @@ class TranscriptExtractorTest {
     }
 
     @Test
+    void cumulativeBlockDoesNotShiftColumnBoundary() {
+        // 2단, 학기 소계 라벨은 x=50·550. 아래쪽 누적 구역이 x=300에 찍혀 있다.
+        // 누적 라벨까지 칸 기준에 넣으면 x=300 제목이 누적 구역과 같은 칸이 되어 학기 학점으로 148을 가져온다
+        OcrPage page = new OcrPage(1000, 900, List.of(
+            word("2026학년도", 300, 100), word("1학기", 400, 100),
+            word("취득학점:", 50, 150), word("18", 150, 150), word("평점평균:", 250, 150), word("4.50", 350, 150),
+            word("2025학년도", 800, 100), word("2학기", 900, 100),
+            word("취득학점:", 550, 150), word("21", 650, 150), word("평점평균:", 750, 150), word("4.10", 850, 150),
+            word("취득학점", 300, 700), word(":", 400, 700), word("148", 450, 700),
+            word("평점평균", 300, 730), word(":", 400, 730), word("4.23/4.5", 450, 730),
+            word("증명합니다", 50, 800)));
+
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(got.semesterCredits()).isEqualByComparingTo("18");
+        assertThat(got.semesterGpa()).isEqualByComparingTo("4.50");
+        assertThat(got.cumulativeCredits()).isEqualByComparingTo("148");
+        assertThat(got.cumulativeGpa()).isEqualByComparingTo("4.23");
+    }
+
+    @Test
+    void readsCreditsAttachedToLabelWithColon() {
+        // "취득학점:14.0"이 한 단어로 읽혀도 총계("총취득학점")로 보지 않는다
+        OcrPage page = new OcrPage(1000, 400, List.of(
+            word("2026학년도", 50, 50), word("1학기", 150, 50),
+            word("취득학점:14.0", 50, 100), word("평점평균:3.75", 250, 100),
+            word("총취득학점", 50, 300), word("91.0", 150, 300), word("평점평균", 250, 300),
+            word("3.81", 350, 300), word("/", 450, 300), word("4.50", 550, 300),
+            word("증명합니다", 50, 360)));
+
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(got.semesterCredits()).isEqualByComparingTo("14.0");
+        assertThat(got.semesterGpa()).isEqualByComparingTo("3.75");
+        assertThat(got.cumulativeCredits()).isEqualByComparingTo("91.0");
+    }
+
+    @Test
+    void stackedSearchStopsAtTotalSoCumulativeGpaIsNotTakenAsSemesterGpa() {
+        // 학기 평점을 OCR이 놓친 세로 소계 바로 아래에 총계가 이어진다. 총계 평점 3.81을 학기 평점으로 가져오면 안 된다
+        OcrPage page = new OcrPage(1000, 400, List.of(
+            word("2026학년도", 50, 50), word("1학기", 150, 50),
+            word("취득학점", 50, 100), word("14", 150, 100),
+            word("총취득학점", 50, 130), word("91", 150, 130),
+            word("평점평균", 50, 160), word("3.81/4.5", 150, 160),
+            word("증명합니다", 50, 300)));
+
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(got.semesterCredits()).isEqualByComparingTo("14");
+        assertThat(got.semesterGpa()).isNull();
+        assertThat(got.cumulativeGpa()).isEqualByComparingTo("3.81");
+        assertThat(got.cumulativeCredits()).isEqualByComparingTo("91");
+    }
+
+    @Test
+    void cumulativeGpaAndCreditsComeFromTheSameBlock() {
+        // 학기 소계에도 만점이 붙어 있으면(4.00/4.5) 그 학점 18이 누적 학점으로 남으면 안 된다
+        OcrPage page = new OcrPage(1000, 600, List.of(
+            word("2026학년도", 50, 50), word("1학기", 150, 50),
+            word("취득학점", 50, 100), word("18", 150, 100),
+            word("평점평균", 50, 130), word("4.00/4.5", 150, 130),
+            word("취득학점", 50, 400), word("148", 150, 400),
+            word("평점평균", 50, 430), word("4.23/4.5", 150, 430),
+            word("증명합니다", 50, 500)));
+
+        ExtractedTranscript got = EXTRACTOR.extract(page, TARGET);
+
+        assertThat(got.semesterCredits()).isEqualByComparingTo("18");
+        assertThat(got.semesterGpa()).isEqualByComparingTo("4.00");
+        assertThat(got.cumulativeGpa()).isEqualByComparingTo("4.23");
+        assertThat(got.cumulativeCredits()).isEqualByComparingTo("148");
+    }
+
+    @Test
     void findsSemesterOnSecondPage() {
         // 1페이지: 총계와 증명 문구, 2페이지: 대상 학기 (정윤 실물처럼 학기가 뒤 페이지에 있는 경우)
         String json = """
