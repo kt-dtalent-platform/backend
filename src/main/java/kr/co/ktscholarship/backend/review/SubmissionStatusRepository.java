@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
+import kr.co.ktscholarship.backend.request.RequestStatus;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -48,14 +49,15 @@ public class SubmissionStatusRepository {
 
     public Optional<SubmissionStatusResponse.RequestInfo> findRequest(long requestId) {
         return jdbc.sql("""
-            SELECT r.id, r.title, c.name AS cohort_name, r.closes_at
+            SELECT r.id, r.title, c.name AS cohort_name, r.closes_at, r.status
             FROM requests r LEFT JOIN cohorts c ON c.id = r.cohort_id
             WHERE r.id = :id
             """)
             .param("id", requestId)
             .query((row, index) -> new SubmissionStatusResponse.RequestInfo(
                 row.getLong("id"), row.getString("title"), row.getString("cohort_name"),
-                UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class))))
+                UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class)),
+                RequestStatus.valueOf(row.getString("status"))))
             .optional();
     }
 
@@ -86,6 +88,16 @@ public class SubmissionStatusRepository {
         MapSqlParameterSource params = filterParams(requestId, bucket, keyword)
             .addValue("limit", pageSize)
             .addValue("offset", (long) (page - 1) * pageSize);
+        return query(params, bucket, keyword, "LIMIT :limit OFFSET :offset");
+    }
+
+    /** 조건에 맞는 대상자 전부(기본 순서). 열 정렬은 서비스에서 이 목록을 정렬해 자른다 */
+    public List<SubmissionStatusResponse.Item> findAllItems(long requestId, String bucket, String keyword) {
+        return query(filterParams(requestId, bucket, keyword), bucket, keyword, "");
+    }
+
+    private List<SubmissionStatusResponse.Item> query(MapSqlParameterSource params, String bucket, String keyword,
+                                                      String limit) {
         return jdbc.sql("""
             SELECT u.id AS scholar_id, u.name AS scholar_name, c.name AS cohort_name, p.school_name,
                 s.id AS submission_id, s.status, s.answers, s.submitted_at, s.is_late
@@ -95,8 +107,8 @@ public class SubmissionStatusRepository {
                 CASE WHEN s.status = 'RESUBMITTED' THEN s.updated_at
                      WHEN s.status = 'SUBMITTED' THEN s.submitted_at END,
                 u.name, u.id
-            LIMIT :limit OFFSET :offset
-            """.formatted(BUCKET_SQL))
+            %s
+            """.formatted(BUCKET_SQL, limit))
             .paramSource(params)
             .query((row, index) -> toItem(
                 row.getLong("scholar_id"), row.getString("scholar_name"), row.getString("cohort_name"),

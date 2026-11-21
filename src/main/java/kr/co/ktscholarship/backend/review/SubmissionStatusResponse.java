@@ -3,6 +3,7 @@ package kr.co.ktscholarship.backend.review;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
+import kr.co.ktscholarship.backend.request.RequestStatus;
 
 /**
  * 요청별 제출 현황. summary는 상태·검색 조건과 상관없이 대상자 전체 기준이고,
@@ -23,7 +24,8 @@ public record SubmissionStatusResponse(
         long id,
         String title,
         @Schema(description = "프로그램 전체 대상이면 null") String cohortName,
-        Instant closesAt
+        Instant closesAt,
+        @Schema(description = "요청 상태. 마감(CLOSED)이면 화면에서 보완 요청 등을 막는 데 쓴다") RequestStatus status
     ) {
     }
 

@@ -164,8 +164,35 @@ class RequestListControllerTest {
             .andExpect(jsonPath("$.success.data.items[*].id", contains(701)));
     }
 
+    // 제목: 다른 프로그램 요청(704), 마감된 요청(703), 성적증명서 제출(701), 작성 중 요청(702)
+    // 마감일: 703 10/10, 701 11/14, 704 11/20, 702 11/30
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "title,asc     | 704,703,701,702",
+        "closesAt,asc  | 703,701,704,702",
+        "closesAt,desc | 702,704,701,703",
+        // 같은 상태(진행 중 704·701)는 기본 순서(최신 생성순)
+        "status,desc   | 703,702,704,701"
+    })
+    void sortsByColumnAndKeepsDefaultOrderForTies(String sort, String expected) throws Exception {
+        Integer[] ids = java.util.Arrays.stream(expected.split(",")).map(Integer::valueOf).toArray(Integer[]::new);
+        mockMvc.perform(asManager(get("/v1/requests").param("sort", sort)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.total").value(4))
+            .andExpect(jsonPath("$.success.data.items[*].id", contains(ids)));
+    }
+
+    @Test
+    void sortsBeforePaging() throws Exception {
+        mockMvc.perform(asManager(get("/v1/requests").param("sort", "closesAt,asc").param("page", "2").param("page_size", "2")))
+            .andExpect(jsonPath("$.success.data.items[*].id", contains(704, 702)));
+    }
+
     @ParameterizedTest
     @CsvSource({
+        "sort, title",
+        "sort, 'title,up'",
+        "sort, 'createdAt,asc'",
         "status, ABC",
         "status, FINISHED",
         "page, 0",
