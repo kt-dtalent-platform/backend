@@ -53,6 +53,23 @@ import org.springframework.web.bind.annotation.RestController;
 @Import(AuthIntegrationTest.TestOnlyController.class)
 class AuthIntegrationTest {
 
+    @Autowired jakarta.persistence.EntityManager entityManager;
+
+    @Test
+    @Transactional
+    void loginUsesPasswordChangeFlagReadAfterLockInsteadOfCachedUser() throws Exception {
+        jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+        entityManager.clear();
+        var cached = entityManager.find(kr.co.ktscholarship.backend.user.User.class, 2L);
+        assertThat(cached.isPasswordChangeRequired()).isTrue();
+        // Simulate a password change committed after the initial user snapshot.
+        jdbcTemplate.update("UPDATE users SET password_change_required = FALSE WHERE id = 2");
+
+        login("scholar@kt.com", PASSWORD)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false));
+    }
+
     private static final String PASSWORD = "password123";
     private static final String ISSUER = "kt-scholarship-backend";
 
@@ -79,6 +96,8 @@ class AuthIntegrationTest {
         insertUser(3L, "inactive@kt.com", hash, "비활성", "SCHOLAR", "INACTIVE", false);
         insertUser(4L, "locked@kt.com", hash, "잠김", "SCHOLAR", "LOCKED", false);
         insertUser(5L, "deleted@kt.com", hash, "삭제됨", "SCHOLAR", "ACTIVE", true);
+        // 잠금이 아직 안 끝난 계정
+        setLockedUntil(4L, Instant.now().plus(Duration.ofMinutes(10)));
     }
 
     @AfterEach
@@ -146,8 +165,13 @@ class AuthIntegrationTest {
         }
 
         @Test
-        void 비밀번호가_틀리면_잠긴_계정도_상태를_드러내지_않는다() throws Exception {
-            expectLoginFailed(login("locked@kt.com", "wrong-password"));
+        void 잠긴_동안은_비밀번호를_확인하지_않고_423() throws Exception {
+            login("locked@kt.com", "wrong-password")
+                    .andExpect(status().isLocked())
+                    .andExpect(jsonPath("$.error.code").value("ACCOUNT_LOCKED"))
+                    .andExpect(jsonPath("$.error.details.lockedUntil").exists());
+            // 잠긴 동안 틀린 시도는 세지 않는다 (잠금 시간이 늘어나지 않음)
+            assertThat(failures(4L)).isZero();
         }
 
         // 삭제되지 않은 계정의 이메일 중복은 V2부터 DB가 막는다 (MigrationV2Test)
@@ -164,6 +188,70 @@ class AuthIntegrationTest {
             login("locked@kt.com", PASSWORD)
                     .andExpect(status().isLocked())
                     .andExpect(jsonPath("$.error.code").value("ACCOUNT_LOCKED"));
+        }
+
+        @Test
+        void 비밀번호를_5번_연속_틀리면_30분_잠기고_맞는_비밀번호도_423() throws Exception {
+            for (int i = 0; i < 4; i++) {
+                expectLoginFailed(login("scholar@kt.com", "wrong-password"));
+            }
+            Instant before = Instant.now();
+            login("scholar@kt.com", "wrong-password")
+                    .andExpect(status().isLocked())
+                    .andExpect(jsonPath("$.error.code").value("ACCOUNT_LOCKED"))
+                    .andExpect(jsonPath("$.error.details.lockedUntil")
+                            .value(matchesPattern("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z")));
+
+            assertThat(statusOf(2L)).isEqualTo("LOCKED");
+            assertThat(Duration.between(before, lockedUntil(2L)))
+                    .isBetween(Duration.ofMinutes(30).minusSeconds(2), Duration.ofMinutes(30).plusSeconds(2));
+            login("scholar@kt.com", PASSWORD).andExpect(status().isLocked());
+        }
+
+        @Test
+        void 로그인에_성공하면_실패_횟수가_0으로_돌아간다() throws Exception {
+            for (int i = 0; i < 4; i++) {
+                expectLoginFailed(login("scholar@kt.com", "wrong-password"));
+            }
+            login("scholar@kt.com", PASSWORD).andExpect(status().isOk());
+            assertThat(failures(2L)).isZero();
+
+            for (int i = 0; i < 4; i++) {
+                expectLoginFailed(login("scholar@kt.com", "wrong-password"));
+            }
+            assertThat(statusOf(2L)).isEqualTo("ACTIVE");
+        }
+
+        @Test
+        void 잠금_시간이_지나면_저절로_풀리고_다시_0부터_센다() throws Exception {
+            jdbcTemplate.update("UPDATE users SET failed_login_count = 5 WHERE id = 4");
+            setLockedUntil(4L, Instant.now().minusSeconds(1));
+
+            expectLoginFailed(login("locked@kt.com", "wrong-password"));
+            assertThat(statusOf(4L)).isEqualTo("ACTIVE");
+            assertThat(failures(4L)).isEqualTo(1);
+
+            login("locked@kt.com", PASSWORD).andExpect(status().isOk());
+            assertThat(failures(4L)).isZero();
+            assertThat(lockedUntil(4L)).isNull();
+        }
+
+        @Test
+        void 잠금_시각이_지워진_잠금은_풀린_것으로_본다() throws Exception {
+            // 임시 비밀번호 재발급은 locked_until만 지운다
+            setLockedUntil(4L, null);
+
+            login("locked@kt.com", PASSWORD).andExpect(status().isOk());
+            assertThat(statusOf(4L)).isEqualTo("ACTIVE");
+        }
+
+        @Test
+        void 사용_중지_계정은_틀려도_실패를_세지_않는다() throws Exception {
+            for (int i = 0; i < 5; i++) {
+                expectLoginFailed(login("inactive@kt.com", "wrong-password"));
+            }
+            assertThat(statusOf(3L)).isEqualTo("INACTIVE");
+            assertThat(failures(3L)).isZero();
         }
 
         @Test
@@ -618,6 +706,25 @@ class AuthIntegrationTest {
                 .build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
                 .getTokenValue();
+    }
+
+    private void setLockedUntil(long id, Instant lockedUntil) {
+        jdbcTemplate.update("UPDATE users SET locked_until = ? WHERE id = ?",
+                kr.co.ktscholarship.backend.common.util.UtcDateTimes.toDb(lockedUntil), id);
+    }
+
+    private String statusOf(long id) {
+        return jdbcTemplate.queryForObject("SELECT status FROM users WHERE id = ?", String.class, id);
+    }
+
+    private int failures(long id) {
+        return jdbcTemplate.queryForObject("SELECT failed_login_count FROM users WHERE id = ?", Integer.class, id);
+    }
+
+    private Instant lockedUntil(long id) {
+        java.time.LocalDateTime value = jdbcTemplate.queryForObject(
+                "SELECT locked_until FROM users WHERE id = ?", java.time.LocalDateTime.class, id);
+        return kr.co.ktscholarship.backend.common.util.UtcDateTimes.fromDb(value);
     }
 
     private void insertUser(Long id, String email, String hash, String name, String role, String status, boolean deleted) {
