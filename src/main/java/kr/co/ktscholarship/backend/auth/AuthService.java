@@ -98,7 +98,7 @@ public class AuthService {
 
         TokenIssuer.Pair tokens = tokenIssuer.issue(user);
         return new LoginResponse(tokens.accessToken(), tokens.refreshToken(), user.getRole().name(), user.getName(),
-                user.isPasswordChangeRequired());
+                state.passwordChangeRequired());
     }
 
     private static BusinessException locked(Instant lockedUntil) {

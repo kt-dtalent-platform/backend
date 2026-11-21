@@ -28,13 +28,14 @@ class LoginAttemptRepository {
 
     State lock(long userId) {
         // 비밀번호 해시도 잠근 뒤에 읽는다. 잠금을 기다리는 동안 비밀번호가 바뀌었으면 새 해시로 확인해야 한다
-        return jdbc.sql("SELECT status, failed_login_count, locked_until, password_hash FROM users WHERE id = :id FOR UPDATE")
+        return jdbc.sql("SELECT status, failed_login_count, locked_until, password_hash, password_change_required FROM users WHERE id = :id FOR UPDATE")
             .param("id", userId)
             .query((rs, n) -> new State(
                 UserStatus.valueOf(rs.getString("status")),
                 rs.getInt("failed_login_count"),
                 UtcDateTimes.fromDb(rs.getObject("locked_until", LocalDateTime.class)),
-                rs.getString("password_hash")))
+                rs.getString("password_hash"),
+                rs.getBoolean("password_change_required")))
             .single();
     }
 
@@ -69,7 +70,7 @@ class LoginAttemptRepository {
             .update();
     }
 
-    record State(UserStatus status, int failures, Instant lockedUntil, String passwordHash) {
+    record State(UserStatus status, int failures, Instant lockedUntil, String passwordHash, boolean passwordChangeRequired) {
 
         @Override
         public String toString() {

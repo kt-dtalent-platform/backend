@@ -53,6 +53,23 @@ import org.springframework.web.bind.annotation.RestController;
 @Import(AuthIntegrationTest.TestOnlyController.class)
 class AuthIntegrationTest {
 
+    @Autowired jakarta.persistence.EntityManager entityManager;
+
+    @Test
+    @Transactional
+    void loginUsesPasswordChangeFlagReadAfterLockInsteadOfCachedUser() throws Exception {
+        jdbcTemplate.update("UPDATE users SET password_change_required = TRUE WHERE id = 2");
+        entityManager.clear();
+        var cached = entityManager.find(kr.co.ktscholarship.backend.user.User.class, 2L);
+        assertThat(cached.isPasswordChangeRequired()).isTrue();
+        // Simulate a password change committed after the initial user snapshot.
+        jdbcTemplate.update("UPDATE users SET password_change_required = FALSE WHERE id = 2");
+
+        login("scholar@kt.com", PASSWORD)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success.data.passwordChangeRequired").value(false));
+    }
+
     private static final String PASSWORD = "password123";
     private static final String ISSUER = "kt-scholarship-backend";
 
