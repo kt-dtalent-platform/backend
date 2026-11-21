@@ -50,6 +50,7 @@ class LoginNoticeTest {
     @AfterEach void cleanup() {
         jdbc.sql("DELETE FROM audit_logs WHERE actor_id=9510").update();
         jdbc.sql("DELETE FROM scholar_login_notices WHERE requested_by=9510").update();
+        jdbc.sql("DELETE FROM refresh_tokens WHERE user_id BETWEEN 9510 AND 9513").update();
         jdbc.sql("DELETE FROM users WHERE id BETWEEN 9510 AND 9513").update();
         jdbc.sql("DELETE FROM login_notice_settings").update();
     }
@@ -168,6 +169,28 @@ class LoginNoticeTest {
         var user=jdbc.sql("SELECT password_hash,password_change_required FROM users WHERE id=9512").query().singleRow();
         assertThat(encoder.matches(password(message.getValue()),(String)user.get("password_hash"))).isTrue();
         assertThat(user.get("password_change_required")).isEqualTo(true);
+    }
+
+    @Test void reissueSignsOutExistingSessionsOfThatScholarOnly() throws Exception {
+        // 9512는 폰·노트북에 로그인해 둔 상태, 9511은 다른 장학생
+        jdbc.sql("""
+            INSERT INTO refresh_tokens(user_id,token_hash,expires_at,created_at) VALUES
+                (9512,'notice-phone',DATEADD('DAY',14,CURRENT_TIMESTAMP),CURRENT_TIMESTAMP),
+                (9512,'notice-laptop',DATEADD('DAY',14,CURRENT_TIMESTAMP),CURRENT_TIMESTAMP),
+                (9511,'notice-other',DATEADD('DAY',14,CURRENT_TIMESTAMP),CURRENT_TIMESTAMP)
+            """).update();
+        java.time.Instant before=java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+
+        mvc.perform(manager(post("/v1/scholars/login-notices"),"{\"scholarIds\":[9512],\"reissue\":true}"))
+            .andExpect(status().isAccepted());
+        assertThat(worker.processOne()).isTrue();
+
+        // refresh token은 그 장학생 것만 지워지고, 이 시각 전에 발급된 access token은 거절된다
+        assertThat(jdbc.sql("SELECT token_hash FROM refresh_tokens WHERE user_id IN (9511,9512)").query(String.class).list())
+            .containsExactly("notice-other");
+        var validAfter=jdbc.sql("SELECT tokens_valid_after FROM users WHERE id=9512").query(java.time.LocalDateTime.class).single();
+        assertThat(kr.co.ktscholarship.backend.common.util.UtcDateTimes.fromDb(validAfter)).isAfterOrEqualTo(before);
+        assertThat(jdbc.sql("SELECT tokens_valid_after FROM users WHERE id=9511").query(java.time.LocalDateTime.class).optional()).isEmpty();
     }
 
     @Test void waitingRequestReadsTheNoticeCommittedAfterItsSenderLookup() throws Exception {
