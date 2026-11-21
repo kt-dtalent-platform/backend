@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.scholar;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = OpenApiConfig.TAG_SCHOLAR)
 @RestController
 public class ScholarRegistrationController {
     private final ScholarRegistrationService service;

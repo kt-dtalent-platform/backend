@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.school;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.*;
@@ -7,6 +9,7 @@ import kr.co.ktscholarship.backend.common.response.ApiResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = OpenApiConfig.TAG_REFERENCE)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 public class SchoolController {

@@ -57,9 +57,16 @@ class LoginNoticeRepository {
         jdbc.sql("UPDATE scholar_login_notices SET status=:status,error_code=:error,updated_at=CURRENT_TIMESTAMP WHERE scholar_id=:id AND status='SENDING' AND delivery_token=:token")
             .param("status",error==null?"SENT":"FAILED").param("error",error).param("id",id).param("token",token).update();
     }
+    /**
+     * 임시 비밀번호 저장. 비밀번호를 직접 바꿀 때처럼 이미 나간 로그인도 끊는다:
+     * tokens_valid_after 전에 발급된 access token은 요청마다 거절되고(AccountTokenValidator), refresh token은 지운다
+     */
     void storePassword(long id, String hash) {
-        jdbc.sql("UPDATE users SET password_hash=:hash,password_change_required=TRUE,failed_login_count=0,locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=:id")
-            .param("id",id).param("hash",hash).update();
+        // DATETIME이 초 단위라 맞춰 저장한다 (비밀번호 변경 AuthService와 같은 기준)
+        java.time.Instant now = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        jdbc.sql("UPDATE users SET password_hash=:hash,password_change_required=TRUE,failed_login_count=0,locked_until=NULL,tokens_valid_after=:now,updated_at=CURRENT_TIMESTAMP WHERE id=:id")
+            .param("id",id).param("hash",hash).param("now",kr.co.ktscholarship.backend.common.util.UtcDateTimes.toDb(now)).update();
+        jdbc.sql("DELETE FROM refresh_tokens WHERE user_id=:id").param("id",id).update();
         jdbc.sql("INSERT INTO audit_logs(actor_id,action,target_type,target_id,row_count) SELECT requested_by,'ISSUE_LOGIN_NOTICE','SCHOLAR',scholar_id,1 FROM scholar_login_notices WHERE scholar_id=:id")
             .param("id",id).update();
     }

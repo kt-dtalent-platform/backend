@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.report;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
@@ -9,6 +11,7 @@ import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = OpenApiConfig.TAG_REVIEW)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 public class SubmissionExportController {

@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.review;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = OpenApiConfig.TAG_REVIEW)
 @RestController
 @PreAuthorize("hasRole('MANAGER')")
 public class SubmissionReviewController {
@@ -32,6 +35,7 @@ public class SubmissionReviewController {
             요청의 대상 장학생 전원과 제출 상태를 조회합니다. 담당자 전용 API입니다.
             제출 행이 없거나 작성 중(DRAFT)이면 NOT_SUBMITTED로 나오고 submissionId는 null입니다.
             기본 순서: 검토 대기(오래 기다린 순) → 보완 필요 → 미제출 → 확인 완료, 같은 칸 안에서는 이름순.
+            sort로 열 정렬(값이 같으면 기본 순서). request.status로 마감 여부를 알 수 있습니다.
             summary는 상태·검색 조건과 상관없이 대상자 전체 기준입니다.""",
         responses = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
@@ -53,11 +57,17 @@ public class SubmissionReviewController {
         @Pattern(regexp = "NOT_SUBMITTED|WAITING|REVISION_REQUIRED|CONFIRMED") String status,
         @Parameter(description = "이름 검색")
         @RequestParam(name = "keyword", required = false) @Size(max = 50) String keyword,
+        @Parameter(description = "열 정렬 `항목,방향`. 항목: name, cohort, university, "
+            + "status(검토 대기→보완 필요→미제출→확인 완료), gpa, submittedAt. 방향: asc, desc. "
+            + "없으면 기본 순서, 빈 값은 방향과 상관없이 맨 뒤", example = "gpa,desc")
+        @RequestParam(name = "sort", required = false)
+        @Pattern(regexp = "(name|cohort|university|status|gpa|submittedAt),(asc|desc)") String sort,
         @RequestParam(name = "page", defaultValue = "1") @Min(1) int page,
         @RequestParam(name = "page_size", defaultValue = "20") @Min(1) @Max(100) int pageSize,
         HttpServletRequest request
     ) {
-        return ApiResponse.success(service.getStatus(requestId, status, keyword, page, pageSize), request.getRequestURI());
+        return ApiResponse.success(service.getStatus(requestId, status, keyword, sort, page, pageSize),
+            request.getRequestURI());
     }
 
     @Operation(
