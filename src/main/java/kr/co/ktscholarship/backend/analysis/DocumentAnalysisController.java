@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.analysis;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import kr.co.ktscholarship.backend.auth.security.CurrentUserId;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 // /v1/submissions/**, /v1/analysis-results/**는 로그인만 확인한다. 담당자인지·본인인지는 서비스에서 본다
+@Tag(name = OpenApiConfig.TAG_ANALYSIS)
 @RestController
 public class DocumentAnalysisController {
 

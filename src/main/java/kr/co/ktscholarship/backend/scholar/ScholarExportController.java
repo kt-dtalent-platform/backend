@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.scholar;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Positive;
@@ -7,6 +9,7 @@ import kr.co.ktscholarship.backend.auth.security.CurrentUserId;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = OpenApiConfig.TAG_SCHOLAR)
 @RestController
 public class ScholarExportController {
     private final ScholarExportService service;

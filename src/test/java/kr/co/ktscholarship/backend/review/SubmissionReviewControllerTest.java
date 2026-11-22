@@ -118,6 +118,7 @@ class SubmissionReviewControllerTest {
             .andExpect(jsonPath("$.success.data.request.title").value("2학기 성적"))
             .andExpect(jsonPath("$.success.data.request.cohortName").value("6기"))
             .andExpect(jsonPath("$.success.data.request.closesAt").value("2026-11-11T14:59:59Z"))
+            .andExpect(jsonPath("$.success.data.request.status").value("IN_PROGRESS"))
             // 대상 7명: 검토 대기 3, 보완 필요 1, 확인 완료 1, 미제출 2(작성 중 포함)
             .andExpect(jsonPath("$.success.data.summary.target").value(7))
             .andExpect(jsonPath("$.success.data.summary.submitted").value(3))
@@ -189,8 +190,47 @@ class SubmissionReviewControllerTest {
             .andExpect(jsonPath("$.success.data.items[*].scholarName", contains("라영", "바영", "사영")));
     }
 
+    // 평점: 가영 3.85, 나영 3.5, 라영 3.1, 마영 4.0 / 다영(숫자 아님)·바영(작성 중)·사영(제출 없음)은 없음
+    // 기본 순서: 가영, 다영, 나영, 라영, 바영, 사영, 마영
     @ParameterizedTest
-    @CsvSource({"status, SUBMITTED", "status, DRAFT", "page, 0", "page_size, 101"})
+    @CsvSource(delimiter = '|', value = {
+        "gpa,desc         | 마영,가영,나영,라영,다영,바영,사영",
+        "gpa,asc          | 라영,나영,가영,마영,다영,바영,사영",
+        "name,desc        | 사영,바영,마영,라영,다영,나영,가영",
+        "submittedAt,asc  | 나영,마영,라영,가영,다영,바영,사영",
+        "submittedAt,desc | 다영,가영,라영,마영,나영,바영,사영",
+        "status,desc      | 마영,바영,사영,라영,나영,가영,다영"
+    })
+    void sortsByColumnWithEmptyValuesLastAndDefaultOrderForTies(String sort, String expected) throws Exception {
+        mockMvc.perform(asManager(get("/v1/requests/871/submissions").param("sort", sort)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.total").value(7))
+            .andExpect(jsonPath("$.success.data.items[*].scholarName", contains(expected.split(","))));
+    }
+
+    @Test
+    void sortsBeforePagingAndKeepsFilter() throws Exception {
+        mockMvc.perform(asManager(get("/v1/requests/871/submissions")
+                .param("sort", "gpa,desc").param("page", "2").param("page_size", "3")))
+            .andExpect(jsonPath("$.success.data.total").value(7))
+            .andExpect(jsonPath("$.success.data.items[*].scholarName", contains("라영", "다영", "바영")));
+
+        mockMvc.perform(asManager(get("/v1/requests/871/submissions")
+                .param("sort", "gpa,asc").param("status", "WAITING")))
+            .andExpect(jsonPath("$.success.data.total").value(3))
+            .andExpect(jsonPath("$.success.data.items[*].scholarName", contains("나영", "가영", "다영")))
+            .andExpect(jsonPath("$.success.data.summary.target").value(7));
+
+        // 마지막 페이지 너머는 빈 목록
+        mockMvc.perform(asManager(get("/v1/requests/871/submissions").param("sort", "name,asc").param("page", "5")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.items", hasSize(0)))
+            .andExpect(jsonPath("$.success.data.total").value(7));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"status, SUBMITTED", "status, DRAFT", "page, 0", "page_size, 101",
+        "sort, gpa", "sort, 'gpa,up'", "sort, 'email,asc'"})
     void rejectsInvalidParameter(String name, String value) throws Exception {
         mockMvc.perform(asManager(get("/v1/requests/871/submissions").param(name, value)))
             .andExpect(status().isBadRequest())

@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.file;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
+import kr.co.ktscholarship.backend.config.OpenApiConfig;
 import java.net.URI;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+@Tag(name = OpenApiConfig.TAG_FILE)
 @RestController
 @PreAuthorize("hasAnyRole('MANAGER','SCHOLAR')")
 public class FileDownloadController {

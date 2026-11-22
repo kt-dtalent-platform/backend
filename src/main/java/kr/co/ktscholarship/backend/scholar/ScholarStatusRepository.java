@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
+import kr.co.ktscholarship.backend.user.UserStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -16,18 +17,18 @@ public class ScholarStatusRepository {
     public List<Row> lock(List<Long> ids) {
         return jdbc.sql("""
             SELECT s.user_id, s.status, s.completed_year, s.withdrawal_reason,
-                   s.withdrawal_reason_detail, s.updated_at
+                   s.withdrawal_reason_detail, s.updated_at, u.status AS account_status
             FROM scholar_profiles s JOIN users u ON u.id = s.user_id
             WHERE s.user_id IN (:ids) AND u.role = 'SCHOLAR' AND u.deleted_at IS NULL
             ORDER BY s.user_id FOR UPDATE
             """).param("ids", ids).query((rs, n) -> new Row(
                 rs.getLong("user_id"), rs.getString("status"), rs.getObject("completed_year", Integer.class),
                 rs.getString("withdrawal_reason"), rs.getString("withdrawal_reason_detail"),
-                UtcDateTimes.fromDb(rs.getObject("updated_at", LocalDateTime.class))
+                UtcDateTimes.fromDb(rs.getObject("updated_at", LocalDateTime.class)), rs.getString("account_status")
             )).list();
     }
 
-    public void update(long id, ScholarStatusRequest change, Instant now) {
+    public void update(long id, ScholarStatusRequest change, UserStatus accountStatus, Instant now) {
         jdbc.sql("""
             UPDATE scholar_profiles SET status=:status, completed_year=:year,
                 withdrawal_reason=:reason, withdrawal_reason_detail=:detail, updated_at=:now
@@ -37,7 +38,10 @@ public class ScholarStatusRepository {
             .param("reason", change.withdrawalReason() == null ? null : change.withdrawalReason().name(), Types.VARCHAR)
             .param("detail", change.withdrawalReasonDetail(), Types.VARCHAR)
             .param("now", UtcDateTimes.toDb(now)).param("id", id).update();
+        jdbc.sql("UPDATE users SET status=:status, updated_at=:now WHERE id=:id")
+            .param("status", accountStatus.name()).param("now", UtcDateTimes.toDb(now)).param("id", id).update();
     }
 
-    public record Row(long id, String status, Integer year, String reason, String detail, Instant updatedAt) {}
+    public record Row(long id, String status, Integer year, String reason, String detail, Instant updatedAt,
+                      String accountStatus) {}
 }
