@@ -70,6 +70,10 @@ class LoginAttemptRepository {
             .update();
     }
 
+    /**
+     * 사용자 행을 잠근 뒤 읽은 로그인 판단용 값. 비밀번호 해시와 비밀번호 변경 필요 여부도 여기서 읽어야
+     * 잠금을 기다리는 동안 바뀐 최신 값으로 판단·응답한다. 해시는 로그에 남지 않게 toString에서 뺀다
+     */
     record State(UserStatus status, int failures, Instant lockedUntil, String passwordHash, boolean passwordChangeRequired) {
 
         @Override
