@@ -55,10 +55,18 @@ class SubmissionExportTest {
         var result=mvc.perform(manager("/v1/requests/71002/export?format=csv&status=NOT_SUBMITTED,WAITING&columns=name,status,gpa,submittedAt"))
             .andExpect(status().isOk()).andReturn();
         String csv=result.getResponse().getContentAsString(StandardCharsets.UTF_8);
-        assertThat(csv).contains("다른학생\",\"미제출\",\"\",\"\"","2026-11-01T00:00:00Z");
+        // 제출 일시는 UTC 글자가 아니라 한국 시각 (2026-11-01 00:00 UTC = 09:00 KST)
+        assertThat(csv).contains("다른학생\",\"미제출\",\"\",\"\"","2026-11-01 09:00").doesNotContain("T00:00:00Z");
         var waiting=mvc.perform(manager("/v1/requests/71002/export?format=csv&status=WAITING"))
             .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(waiting).contains("홍길동").doesNotContain("다른학생");
+    }
+    @Test void gpaScaleColumnReadsAnswerKeyAndCreditsHeaderIsEarnedCredits() throws Exception {
+        // 열 키는 gpaScale, 장학생 답의 키는 gpa_scale
+        fixture.sql("UPDATE submissions SET answers='{\"name\":\"홍길동\",\"gpa\":3.0,\"gpa_scale\":\"4.5\",\"credits\":15}' FORMAT JSON WHERE id=72003");
+        var csv=mvc.perform(manager("/v1/requests/71002/export?format=csv&status=WAITING&columns=name,gpa,gpaScale,credits"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(csv).contains("\"이름\",\"평점\",\"만점 기준\",\"취득 학점\"", "\"홍길동\",\"3.0\",\"4.5\",\"15\"");
     }
     @Test void treatsUntrustedCellAsTextAndEscapesCsvFormulasAndQuotes() throws Exception {
         fixture.sql("UPDATE users SET name='=1+1' WHERE id=70002");

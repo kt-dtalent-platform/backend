@@ -39,6 +39,8 @@ class RequestTemplateControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        // V11이 넣는 성적증명서 템플릿은 MigrationV11Test에서 본다. 여기서는 테스트가 넣은 템플릿만 남긴다 (트랜잭션이라 되돌아감)
+        jdbc.sql("DELETE FROM request_templates WHERE code = 'GRADE_CERTIFICATE'").update();
     }
 
     @Test
