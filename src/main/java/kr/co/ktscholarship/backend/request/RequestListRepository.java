@@ -27,6 +27,7 @@ public class RequestListRepository {
             COUNT(t.id) AS target_count,
             COALESCE(SUM(CASE WHEN s.status IS NOT NULL AND s.status <> 'DRAFT' THEN 1 ELSE 0 END), 0)
                 AS submitted_count,
+            COALESCE(SUM(CASE WHEN s.status IN ('SUBMITTED', 'RESUBMITTED') THEN 1 ELSE 0 END), 0) AS waiting_count,
             COALESCE(SUM(CASE WHEN s.status = 'REVISION_REQUIRED' THEN 1 ELSE 0 END), 0) AS revision_count
         FROM requests r
         JOIN request_templates tpl ON tpl.id = r.template_id
@@ -78,6 +79,7 @@ public class RequestListRepository {
                 UtcDateTimes.fromDb(row.getObject("closes_at", LocalDateTime.class)),
                 row.getLong("target_count"),
                 row.getLong("submitted_count"),
+                row.getLong("waiting_count"),
                 row.getLong("revision_count")
             )).list();
 

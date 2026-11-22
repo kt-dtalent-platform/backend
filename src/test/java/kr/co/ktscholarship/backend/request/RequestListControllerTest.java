@@ -113,6 +113,8 @@ class RequestListControllerTest {
             // 대상 4명 중 확인 1 + 보완 필요 1 = 제출 2, 작성 중·제출 없음은 미제출
             .andExpect(jsonPath("$.success.data.items[1].targetCount").value(4))
             .andExpect(jsonPath("$.success.data.items[1].submittedCount").value(2))
+            // 확인 완료·보완 필요는 검토 대기가 아니다
+            .andExpect(jsonPath("$.success.data.items[1].waitingCount").value(0))
             .andExpect(jsonPath("$.success.data.items[1].revisionCount").value(1))
             // 작성 중: 대상 없음, 공개 전
             .andExpect(jsonPath("$.success.data.items[2].cohortName").value("6기"))
@@ -120,9 +122,12 @@ class RequestListControllerTest {
             .andExpect(jsonPath("$.success.data.items[2].targetCount").value(0))
             .andExpect(jsonPath("$.success.data.items[2].submittedCount").value(0))
             .andExpect(jsonPath("$.success.data.items[2].revisionCount").value(0))
-            // 제출·재제출도 제출 수에 포함
+            // 제출·재제출도 제출 수에 포함되고, 둘 다 검토 대기
             .andExpect(jsonPath("$.success.data.items[0].submittedCount").value(1))
-            .andExpect(jsonPath("$.success.data.items[3].submittedCount").value(1));
+            .andExpect(jsonPath("$.success.data.items[0].waitingCount").value(1))
+            .andExpect(jsonPath("$.success.data.items[3].submittedCount").value(1))
+            .andExpect(jsonPath("$.success.data.items[3].waitingCount").value(1))
+            .andExpect(jsonPath("$.success.data.items[2].waitingCount").value(0));
     }
 
     @Test
