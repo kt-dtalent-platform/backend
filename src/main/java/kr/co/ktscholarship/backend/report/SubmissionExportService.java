@@ -17,7 +17,10 @@ public class SubmissionExportService {
     private static final Map<String,String> FIXED=Map.ofEntries(
         Map.entry("name","이름"),Map.entry("cohort","기수"),Map.entry("email","이메일"),Map.entry("university","학교"),
         Map.entry("major","전공"),Map.entry("studentNo","학번"),Map.entry("phone","연락처"),Map.entry("status","상태"),
-        Map.entry("submittedAt","제출 일시"),Map.entry("revisionReason","보완 사유"),Map.entry("gpa","평점"),Map.entry("gpaScale","만점 기준"),Map.entry("credits","이수 학점"));
+        Map.entry("submittedAt","제출 일시"),Map.entry("revisionReason","보완 사유"),Map.entry("gpa","평점"),Map.entry("gpaScale","만점 기준"),Map.entry("credits","취득 학점"));
+    // 제출 일시는 엑셀에서 그대로 읽히게 한국 시각 글자로 ("2026-11-20 15:21")
+    private static final java.time.format.DateTimeFormatter SUBMITTED_AT=
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(java.time.ZoneId.of("Asia/Seoul"));
     private static final Set<String> STATES=Set.of("NOT_SUBMITTED","WAITING","DRAFT","SUBMITTED","RESUBMITTED","REVISION_REQUIRED","CONFIRMED");
     private final SubmissionExportRepository repository;
     public SubmissionExportService(SubmissionExportRepository repository) { this.repository=repository; }
@@ -70,7 +73,9 @@ public class SubmissionExportService {
             case "status"->switch(row.status()==null?"DRAFT":row.status()) {
                 case "DRAFT"->"미제출";case "SUBMITTED"->"검토 대기";case "RESUBMITTED"->"재제출";
                 case "REVISION_REQUIRED"->"보완 필요";case "CONFIRMED"->"확인 완료";default->row.status();};
-            case "submittedAt"->row.submittedAt()==null?null:row.submittedAt().toString();
+            case "submittedAt"->row.submittedAt()==null?null:SUBMITTED_AT.format(row.submittedAt());
+            // 열 키는 gpaScale이지만 장학생 답의 항목 키는 gpa_scale (템플릿·문서 분석 비교 키)
+            case "gpaScale"->row.answers().get("gpa_scale");
             case "revisionReason"->row.submissionId()==null?null:reasons.get(row.submissionId());
             default->"FILE".equals(types.get(key))?String.join(", ",files.getOrDefault(row.submissionId(),Map.of()).getOrDefault(key,List.of())):row.answers().get(key);
         };
