@@ -9,9 +9,12 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import org.hibernate.annotations.DynamicUpdate;
 
+// 바뀐 칸만 UPDATE한다. 비밀번호 변경이 그 사이 다른 곳(로그인 실패 횟수·잠금)에서 바꾼 칸을 옛 값으로 덮지 않게
 @Entity
 @Table(name = "users")
+@DynamicUpdate
 public class User {
 
     // V2부터 DB AUTO_INCREMENT로 생성
