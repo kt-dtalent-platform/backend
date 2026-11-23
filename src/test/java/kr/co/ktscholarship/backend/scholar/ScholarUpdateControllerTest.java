@@ -82,6 +82,16 @@ class ScholarUpdateControllerTest {
             .isEqualTo("010-1234-5678");
     }
 
+    @Test void migrationNormalizesExistingPhonesAndPreservesNull() throws Exception {
+        jdbc.sql("UPDATE scholar_profiles SET phone=NULL WHERE user_id=202").update();
+        jdbc.sql("UPDATE scholar_profiles SET phone='(02) 123-4567' WHERE user_id=203").update();
+        var resource=new org.springframework.core.io.ClassPathResource("db/migration/V12__normalize_scholar_phone.sql");
+        jdbc.sql(resource.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).update();
+        assertThat(jdbc.sql("SELECT phone FROM scholar_profiles WHERE user_id=201").query(String.class).single()).isEqualTo("01012345678");
+        assertThat(jdbc.sql("SELECT phone FROM scholar_profiles WHERE user_id=202").query().singleRow().get("phone")).isNull();
+        assertThat(jdbc.sql("SELECT phone FROM scholar_profiles WHERE user_id=203").query(String.class).single()).isEqualTo("021234567");
+    }
+
     @Test
     void updatesBothTablesAndReturnsPersistedTimestamp() throws Exception {
         LocalDateTime before = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(1);
