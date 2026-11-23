@@ -72,6 +72,16 @@ class ScholarUpdateControllerTest {
         jdbc.sql("DELETE FROM programs WHERE id = 101").update();
     }
 
+    @ParameterizedTest @ValueSource(strings={"", "01012345", "010123456789", "11012345678"})
+    void rejectsInvalidPhoneWithoutUpdatingProfile(String phone) throws Exception {
+        mockMvc.perform(patch("/v1/scholars/201").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"phone\":\""+phone+"\"}")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbc.sql("SELECT phone FROM scholar_profiles WHERE user_id=201").query(String.class).single())
+            .isEqualTo("010-1234-5678");
+    }
+
     @Test
     void updatesBothTablesAndReturnsPersistedTimestamp() throws Exception {
         LocalDateTime before = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(1);
@@ -92,7 +102,7 @@ class ScholarUpdateControllerTest {
         assertThat(jdbc.sql("SELECT name FROM users WHERE id = 201").query(String.class).single())
             .isEqualTo("수정 이름");
         var profile = jdbc.sql("SELECT * FROM scholar_profiles WHERE user_id = 201").query().singleRow();
-        assertThat(profile).containsEntry("phone", "010-9876-5432")
+        assertThat(profile).containsEntry("phone", "01098765432")
             .containsEntry("school_name", "수정 학교").containsEntry("major", "수정 전공");
         assertThat(jdbc.sql("SELECT updated_at FROM scholar_profiles WHERE user_id = 201")
             .query(LocalDateTime.class).single()).isAfter(before);

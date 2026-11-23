@@ -6,6 +6,8 @@ import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.json.JsonMapper;
 
 class ScholarCreateRequestTest {
@@ -31,6 +33,21 @@ class ScholarCreateRequestTest {
         assertThat(FACTORY.getValidator().validate(request)).isEmpty();
         assertThat(request.university()).isEqualTo("테스트대학교");
         assertThat(request.studentNo()).isEqualTo("20201234");
+        assertThat(request.phone()).isEqualTo("01012345678");
+    }
+
+    @ParameterizedTest @ValueSource(strings={"021234567", "0311234567", "01012345678", "(010) 1234-5678"})
+    void acceptsPhoneWithNineToElevenDigits(String phone) {
+        var request=new ScholarCreateRequest(6L,"학생","student@example.test",phone,"학교",null,null,null);
+        assertThat(FACTORY.getValidator().validate(request)).isEmpty();
+        assertThat(request.phone()).matches("0[0-9]{8,10}");
+    }
+
+    @ParameterizedTest @ValueSource(strings={"", "abc", "01012345", "010123456789", "11012345678", "+82 10 1234 5678"})
+    void rejectsPhoneOutsideTheSpecifiedFormat(String phone) {
+        var request=new ScholarCreateRequest(6L,"학생","student@example.test",phone,"학교",null,null,null);
+        assertThat(FACTORY.getValidator().validate(request)).extracting(v->v.getPropertyPath().toString())
+            .containsExactly("phone");
     }
 
     @Test
@@ -68,7 +85,7 @@ class ScholarCreateRequestTest {
     @Test
     void acceptsValuesAtDatabaseLengthLimits() {
         var request = new ScholarCreateRequest(
-            6L, "가".repeat(50), "hong@example.test", "1".repeat(20),
+            6L, "가".repeat(50), "hong@example.test", "01012345678",
             "가".repeat(100), "가".repeat(100), "1".repeat(30), null
         );
 

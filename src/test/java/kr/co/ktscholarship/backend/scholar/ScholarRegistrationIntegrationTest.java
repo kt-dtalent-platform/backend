@@ -12,6 +12,8 @@ import kr.co.ktscholarship.backend.common.exception.ErrorCode;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -65,6 +67,7 @@ class ScholarRegistrationIntegrationTest {
         var data = mapper.readTree(response.getContentAsString()).path("success").path("data");
         long id = data.path("id").asLong();
         String password = data.path("temporaryPassword").asText();
+        assertThat(jdbc.queryForObject("SELECT phone FROM scholar_profiles WHERE user_id=?",String.class,id)).isEqualTo("01012345678");
         assertThat(password).hasSize(24);
         assertThat(response.getHeader("Location")).isEqualTo("/v1/scholars/" + id);
         String hash = jdbc.queryForObject("SELECT password_hash FROM users WHERE id=?",String.class,id);
@@ -75,6 +78,15 @@ class ScholarRegistrationIntegrationTest {
         mvc.perform(post("/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
             .content("{\"email\":\"registration-success@example.test\",\"password\":\"" + password + "\"}"))
             .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest @ValueSource(strings={"", "01012345", "010123456789", "11012345678"})
+    void rejectsInvalidPhoneBeforeSavingAccount(String phone) throws Exception {
+        mvc.perform(post("/v1/scholars").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"cohortId\":706,\"name\":\"학생\",\"email\":\"registration-invalid@example.test\",\"university\":\"학교\",\"phone\":\""+phone+"\"}")
+            .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM users WHERE email='registration-invalid@example.test'",Long.class)).isZero();
     }
 
     @Test
