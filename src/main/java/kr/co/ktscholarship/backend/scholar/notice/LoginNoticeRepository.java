@@ -2,6 +2,10 @@ package kr.co.ktscholarship.backend.scholar.notice;
 
 import static kr.co.ktscholarship.backend.scholar.notice.LoginNoticeModels.*;
 import java.util.List;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import kr.co.ktscholarship.backend.common.util.AccountStatuses;
+import kr.co.ktscholarship.backend.common.util.UtcDateTimes;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -19,8 +23,10 @@ class LoginNoticeRepository {
             .param("email", value.fromAddress()).param("name",value.senderName()).update();
     }
     Optional<Account> lockAccount(long id) {
-        return jdbc.sql("SELECT id,name,email,password_change_required AS passwordChangeRequired,status FROM users WHERE id=:id AND role='SCHOLAR' AND deleted_at IS NULL FOR UPDATE")
-            .param("id",id).query(Account.class).optional();
+        return jdbc.sql("SELECT id,name,email,password_change_required AS passwordChangeRequired,status,locked_until FROM users WHERE id=:id AND role='SCHOLAR' AND deleted_at IS NULL FOR UPDATE")
+            .param("id",id).query((rs,n)->new Account(rs.getLong("id"),rs.getString("name"),rs.getString("email"),
+                rs.getBoolean("passwordChangeRequired"),AccountStatuses.effective(rs.getString("status"),
+                    UtcDateTimes.fromDb(rs.getObject("locked_until",LocalDateTime.class)),Instant.now()))).optional();
     }
     Optional<Item> notice(long id) {
         return jdbc.sql("SELECT scholar_id AS scholarId,status,error_code AS errorCode FROM scholar_login_notices WHERE scholar_id=:id")
