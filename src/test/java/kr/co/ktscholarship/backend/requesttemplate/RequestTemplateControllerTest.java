@@ -90,6 +90,20 @@ class RequestTemplateControllerTest {
     }
 
     @Test
+    void hidesInactiveTemplates() throws Exception {
+        jdbc.sql("""
+            INSERT INTO request_templates (id, code, name, default_fields, is_active) VALUES
+                (103, 'TRANSPORT_CLAIM', '교통비 증빙', '[]' FORMAT JSON, TRUE),
+                (115, 'CUSTOM', '로컬 테스트용 사용자 정의', '[]' FORMAT JSON, FALSE)
+            """).update();
+
+        mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.items", hasSize(1)))
+            .andExpect(jsonPath("$.success.data.items[0].code").value("TRANSPORT_CLAIM"));
+    }
+
+    @Test
     void returnsEmptyArrayWhenNoTemplatesAreStored() throws Exception {
         mockMvc.perform(get("/v1/request-templates").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())

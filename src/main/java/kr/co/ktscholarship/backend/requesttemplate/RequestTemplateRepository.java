@@ -22,7 +22,8 @@ public class RequestTemplateRepository {
     }
 
     public RequestTemplateListResponse findAll() {
-        var items = jdbc.sql("SELECT id, code, name, default_fields FROM request_templates")
+        // 사용 중인 템플릿만 보여 준다. 요청 저장도 사용 중인 템플릿만 받아서(RequestWriteRepository) 고를 수 없는 유형이 보이지 않게
+        var items = jdbc.sql("SELECT id, code, name, default_fields FROM request_templates WHERE is_active = TRUE")
             .query((row, index) -> new RequestTemplateListResponse.Item(
                 row.getLong("id"), row.getString("code"), row.getString("name"),
                 Objects.requireNonNull(mapper.readValue(row.getString("default_fields"), FIELDS_TYPE))
