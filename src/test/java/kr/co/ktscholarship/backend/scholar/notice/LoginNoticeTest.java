@@ -44,6 +44,7 @@ class LoginNoticeTest {
     @BeforeEach void setup() {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("INSERT INTO users(id,name,email,password_hash,role,password_change_required,status) VALUES (9510,'담당자','notice-manager@example.test','old','MANAGER',FALSE,'ACTIVE'),(9511,'학생','notice-student@example.test','old','SCHOLAR',TRUE,'ACTIVE'),(9512,'변경 학생','notice-changed@example.test','old','SCHOLAR',FALSE,'ACTIVE'),(9513,'잠긴 학생','notice-locked@example.test','old','SCHOLAR',TRUE,'LOCKED')").update();
+        jdbc.sql("UPDATE users SET locked_until='2099-01-01' WHERE id=9513").update();
         repository.saveSender(new LoginNoticeModels.Sender("foundation@example.test","재단"));
         when(mail.createMimeMessage()).thenAnswer(invocation->new MimeMessage(Session.getInstance(new Properties())));
     }
@@ -254,6 +255,30 @@ class LoginNoticeTest {
         }).when(mail).send(any(MimeMessage.class));
         worker.processOne();
         assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo(newerState);
+    }
+
+    @ParameterizedTest @ValueSource(strings={"2020-01-01T00:00:00","NULL"})
+    void expiredLockAllowsExplicitReissueWithoutALoginFirst(String until) throws Exception {
+        jdbc.sql("UPDATE users SET status='LOCKED',locked_until=:until WHERE id=9511")
+            .param("until",until.equals("NULL")?null:java.time.LocalDateTime.parse(until)).update();
+        enqueue(true);
+        assertThat(worker.processOne()).isTrue();
+        assertThat(repository.notice(9511).orElseThrow().status()).isEqualTo("SENT");
+        var sent=ArgumentCaptor.forClass(MimeMessage.class);verify(mail).send(sent.capture());
+        mvc.perform(post("/v1/auth/login").contentType("application/json")
+            .content("{\"email\":\"notice-student@example.test\",\"password\":\""+password(sent.getValue())+"\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.passwordChangeRequired").value(true));
+    }
+
+    @ParameterizedTest @ValueSource(strings={"LOCKED","INACTIVE"})
+    void activeLockAndInactiveAccountsStillCannotReceiveNotice(String state) throws Exception {
+        jdbc.sql("UPDATE users SET status=:status,locked_until='2099-01-01' WHERE id=9511").param("status",state).update();
+        mvc.perform(manager(post("/v1/scholars/login-notices"),"{\"scholarIds\":[9511],\"reissue\":true}"))
+            .andExpect(status().isAccepted()).andExpect(jsonPath("$.success.data.queued").value(0))
+            .andExpect(jsonPath("$.success.data.items[0].errorCode").value("ACCOUNT_DISABLED"));
+        assertThat(worker.processOne()).isFalse();
+        verify(mail,never()).send(any(MimeMessage.class));
+        assertThat(jdbc.sql("SELECT password_hash FROM users WHERE id=9511").query(String.class).single()).isEqualTo("old");
     }
 
     private void enqueue(boolean reissue) throws Exception {

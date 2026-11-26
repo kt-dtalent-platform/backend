@@ -1,5 +1,7 @@
 package kr.co.ktscholarship.backend.scholar;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -86,13 +88,26 @@ class ScholarDetailControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"ACTIVE", "INACTIVE", "LOCKED"})
     void returnsAccountStatusSeparatelyFromScholarStatus(String accountStatus) throws Exception {
-        jdbc.sql("UPDATE users SET status = :status WHERE id = 201")
+        jdbc.sql("UPDATE users SET status = :status, locked_until='2099-01-01' WHERE id = 201")
             .param("status", accountStatus).update();
 
         mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success.data.accountStatus").value(accountStatus))
             .andExpect(jsonPath("$.success.data.status").value("ENROLLED"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"LOCKED,2020-01-01T00:00:00,ACTIVE", "LOCKED,2099-01-01T00:00:00,LOCKED",
+        "LOCKED,,ACTIVE", "INACTIVE,2020-01-01T00:00:00,INACTIVE", "ACTIVE,2099-01-01T00:00:00,ACTIVE"})
+    void listAndDetailUseTheSameEffectiveLockState(String stored, String until, String expected) throws Exception {
+        jdbc.sql("UPDATE users SET status=:status,locked_until=:until WHERE id=201")
+            .param("status",stored).param("until",until==null?null:java.time.LocalDateTime.parse(until)).update();
+        mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.accountStatus").value(expected));
+        mockMvc.perform(get("/v1/scholars?keyword=hong@example.test").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.items[0].accountStatus").value(expected));
+        assertThat(jdbc.sql("SELECT status FROM users WHERE id=201").query(String.class).single()).isEqualTo(stored);
     }
 
     @ParameterizedTest
