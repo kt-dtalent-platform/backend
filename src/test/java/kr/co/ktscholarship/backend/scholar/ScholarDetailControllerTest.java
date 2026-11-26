@@ -57,7 +57,7 @@ class ScholarDetailControllerTest {
     }
 
     @Test
-    void returnsBasicDetailsWithMaskedPhoneAndCommonResponse() throws Exception {
+    void returnsBasicDetailsWithFullAndMaskedPhone() throws Exception {
         mockMvc.perform(get("/v1/scholars/201").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.resultType").value("SUCCESS"))
@@ -70,7 +70,7 @@ class ScholarDetailControllerTest {
             .andExpect(jsonPath("$.success.data.cohort.id").value(106))
             .andExpect(jsonPath("$.success.data.cohort.name").value("6기"))
             .andExpect(jsonPath("$.success.data.status").value("ENROLLED"))
-            .andExpect(jsonPath("$.success.data.phone").doesNotExist())
+            .andExpect(jsonPath("$.success.data.phone").value("010-1234-5678"))
             .andExpect(jsonPath("$.error").value(nullValue()))
             .andExpect(jsonPath("$.meta.path").value("/v1/scholars/201"));
     }
@@ -97,7 +97,7 @@ class ScholarDetailControllerTest {
 
     @ParameterizedTest
     @CsvSource({"01012345678, 010-****-5678", "02-1234-5678, 02-****-5678", "123, ****"})
-    void masksPhoneWithoutExposingTheOriginal(String phone, String expected) throws Exception {
+    void returnsMaskedDisplayValueForSupportedPhoneFormats(String phone, String expected) throws Exception {
         jdbc.sql("UPDATE scholar_profiles SET phone = :phone WHERE user_id = 201")
             .param("phone", phone).update();
 

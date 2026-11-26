@@ -37,7 +37,7 @@ public class CohortService {
             }
             throw exception;
         }
-        return new CohortItem(id, request.name().strip(), request.startedOn(), request.endedOn(), 0);
+        return new CohortItem(id, request.name().strip(), request.startedOn(), request.endedOn(), 0, 0);
     }
 
     public List<CohortItem> findByProgramId(long programId) {

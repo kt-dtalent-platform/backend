@@ -43,7 +43,7 @@ class CohortControllerTest {
     void returnsCohortsInTheCommonResponse() throws Exception {
         when(repository.existsProgram(1)).thenReturn(true);
         when(repository.findByProgramId(1)).thenReturn(List.of(
-                new CohortItem(6, "6기", LocalDate.of(2026, 3, 1), null, 47)
+                new CohortItem(6, "6기", LocalDate.of(2026, 3, 1), null, 47, 39)
         ));
 
         mockMvc.perform(get("/v1/programs/1/cohorts").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
@@ -55,6 +55,7 @@ class CohortControllerTest {
                 .andExpect(jsonPath("$.success.data.items[0].startedOn").value("2026-03-01"))
                 .andExpect(jsonPath("$.success.data.items[0].endedOn").value(nullValue()))
                 .andExpect(jsonPath("$.success.data.items[0].scholarCount").value(47))
+                .andExpect(jsonPath("$.success.data.items[0].enrolledScholarCount").value(39))
                 .andExpect(jsonPath("$.error").value(nullValue()))
                 .andExpect(jsonPath("$.meta.path").value("/v1/programs/1/cohorts"))
                 .andExpect(jsonPath("$.meta.timestamp").isNotEmpty());
