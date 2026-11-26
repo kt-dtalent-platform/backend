@@ -12,6 +12,8 @@ import kr.co.ktscholarship.backend.support.WorkflowFixture;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -37,6 +39,7 @@ class SubmissionExportTest {
     }
     int audits(){return jdbc.sql("SELECT COUNT(*) FROM audit_logs WHERE actor_id=70001").query(Integer.class).single();}
     @Test void workbookIncludesTargetsAndConfiguredFieldsAndKeepsIdentifiersAsText() throws Exception {
+        fixture.sql("UPDATE submissions SET status='SUBMITTED',submitted_at='2026-11-01' WHERE request_id=71001");
         var result=mvc.perform(manager("/v1/requests/71001/export?columns=name,studentNo,phone,gpa,receipt"))
             .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store")).andReturn();
         try(var book=new XSSFWorkbook(new ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
@@ -51,6 +54,37 @@ class SubmissionExportTest {
         }
         assertThat(jdbc.sql("SELECT row_count FROM audit_logs WHERE actor_id=70001 AND action='EXPORT_SUBMISSIONS'").query(Integer.class).single()).isEqualTo(2);
     }
+    @ParameterizedTest @ValueSource(strings={"xlsx","csv"})
+    void draftAnswersAndUploadedFileNamesAreNotExported(String format) throws Exception {
+        fixture.sql("UPDATE submissions SET answers='{\"name\":\"홍길동\",\"gpa\":3.75,\"gpa_scale\":4.5,\"credits\":14}' FORMAT JSON WHERE id=72001");
+        var response=mvc.perform(manager("/v1/requests/71001/export?format="+format+"&columns=name,status,gpa,gpaScale,credits,receipt,other_file"))
+            .andExpect(status().isOk()).andReturn().getResponse();
+        if(format.equals("xlsx")) {
+            try(var book=new XSSFWorkbook(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+                var sheet=book.getSheetAt(0);
+                assertThat(sheet.getLastRowNum()).isEqualTo(2);
+                for(int r=1;r<=2;r++) {
+                    assertThat(sheet.getRow(r).getCell(0).getStringCellValue()).isNotBlank();
+                    assertThat(sheet.getRow(r).getCell(1).getStringCellValue()).isEqualTo("미제출");
+                    for(int c=2;c<=6;c++) assertThat(sheet.getRow(r).getCell(c).getStringCellValue()).isEmpty();
+                }
+            }
+        } else {
+            assertThat(response.getContentAsString(StandardCharsets.UTF_8))
+                .contains("\"홍길동\",\"미제출\",\"\",\"\",\"\",\"\",\"\"")
+                .doesNotContain("3.75","4.5","타인.pdf");
+        }
+        assertThat(jdbc.sql("SELECT answers FROM submissions WHERE id=72001").query(String.class).single()).contains("3.75");
+    }
+
+    @ParameterizedTest @ValueSource(strings={"SUBMITTED","RESUBMITTED","REVISION_REQUIRED","CONFIRMED"})
+    void submittedAnswersRemainInExport(String state) throws Exception {
+        fixture.sql("UPDATE submissions SET status='"+state+"' WHERE id=72003");
+        var csv=mvc.perform(manager("/v1/requests/71002/export?format=csv&columns=name,gpa"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(csv).contains("\"홍길동\",\"3.0\"");
+    }
+
     @Test void includesTargetsWithoutSubmissionAndSupportsWaitingAndMultipleStatuses() throws Exception {
         var result=mvc.perform(manager("/v1/requests/71002/export?format=csv&status=NOT_SUBMITTED,WAITING&columns=name,status,gpa,submittedAt"))
             .andExpect(status().isOk()).andReturn();
