@@ -54,7 +54,7 @@ public class ScholarDetailRepository {
                 row.getString("withdrawal_reason_detail"),
                 row.getString("bank_account_number") == null ? null : new ScholarBankAccount(
                     row.getString("bank_name"), row.getString("bank_account_number"), row.getString("bank_account_holder")),
-                row.getObject("school_id", Long.class)
+                row.getObject("school_id", Long.class), row.getString("phone")
             )).optional();
     }
 }

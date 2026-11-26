@@ -49,12 +49,25 @@ class CohortRepositoryTest {
     @Test
     void returnsProgramCohortsWithScholarCountsAndNullableDates() {
         assertThat(repository.findByProgramId(101)).containsExactly(
-                new CohortItem(105, "5기", LocalDate.of(2025, 3, 1), LocalDate.of(2026, 2, 28), 2),
-                new CohortItem(106, "6기", null, null, 0)
+                new CohortItem(105, "5기", LocalDate.of(2025, 3, 1), LocalDate.of(2026, 2, 28), 2, 2),
+                new CohortItem(106, "6기", null, null, 0, 0)
         );
         assertThat(repository.findByProgramId(102)).containsExactly(
-                new CohortItem(107, "다른 프로그램 기수", LocalDate.of(2026, 3, 1), null, 1)
+                new CohortItem(107, "다른 프로그램 기수", LocalDate.of(2026, 3, 1), null, 1, 1)
         );
+    }
+
+    @Test
+    void countsOnlyScholarsEligibleForRequestPublication() {
+        jdbc.sql("UPDATE scholar_profiles SET status = 'LEAVE' WHERE user_id = 201").update();
+        jdbc.sql("UPDATE users SET status = 'INACTIVE' WHERE id = 202").update();
+
+        CohortItem cohort = repository.findByProgramId(101).getFirst();
+        assertThat(cohort.scholarCount()).isEqualTo(2);
+        assertThat(cohort.enrolledScholarCount()).isZero();
+
+        jdbc.sql("UPDATE users SET status = 'LOCKED' WHERE id = 202").update();
+        assertThat(repository.findByProgramId(101).getFirst().enrolledScholarCount()).isEqualTo(1);
     }
 
     @Test
