@@ -77,6 +77,21 @@ class ScholarImportControllerTest {
             .containsEntry("school_id", null).containsEntry("student_no", "001234");
     }
 
+    @Test void bulkNormalizesPhonesAndInvalidPhoneRejectsEveryRow() throws Exception {
+        var valid=bulkRow("import-first@example.test");
+        valid.put("phone","(010) 1234-5678");
+        var invalid=bulkRow("import-second@example.test");
+        invalid.put("phone","11012345678");
+        mvc.perform(bulk(List.of(valid,invalid))).andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.details[0].field").value("phone"))
+            .andExpect(jsonPath("$.error.details[0].row").value(3));
+        assertThat(newAccounts()).isZero();
+        invalid.put("phone","02-123-4567");
+        mvc.perform(bulk(List.of(valid,invalid))).andExpect(status().isCreated());
+        assertThat(profile("import-first@example.test")).containsEntry("phone","01012345678");
+        assertThat(profile("import-second@example.test")).containsEntry("phone","021234567");
+    }
+
     @Test
     void bulkJsonDuplicateEmailIsAStringListAndRollsBackPreviousRows() throws Exception {
         mvc.perform(bulk(List.of(bulkRow("import-first@example.test"), bulkRow("import-existing@example.test"))))
