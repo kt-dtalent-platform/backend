@@ -18,6 +18,11 @@ public class RequestDeadlineClosureRepository {
                 SELECT 1 FROM request_targets t
                 WHERE t.request_id=requests.id AND t.extended_due_at>:now
               )
+              AND NOT EXISTS (
+                SELECT 1 FROM request_targets t
+                LEFT JOIN submissions s ON s.request_id=t.request_id AND s.scholar_id=t.scholar_id
+                WHERE t.request_id=requests.id AND (s.id IS NULL OR s.status<>'CONFIRMED')
+              )
             """).param("now", UtcDateTimes.toDb(now)).update();
     }
 }
