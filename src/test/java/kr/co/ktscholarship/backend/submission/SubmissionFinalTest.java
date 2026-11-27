@@ -69,14 +69,55 @@ class SubmissionFinalTest {
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.details.fieldErrors[0].key").value("receipt"));
         assertThat(historyCount()).isZero();
     }
-    @Test void versionConflictAndDeadlineDoNotWriteAnything() throws Exception {
+    @Test void versionConflictAndClosedRequestDoNotWriteAnything() throws Exception {
         uploaded();
         send(71001,"submit","{\"answers\":{},\"version\":1}",70002).andExpect(status().isConflict());
-        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        fixture.sql("UPDATE requests SET status='CLOSED' WHERE id=71001");
         send(71001,"submit","{\"answers\":{},\"version\":2}",70002).andExpect(status().is(422))
             .andExpect(jsonPath("$.error.code").value("DEADLINE_PASSED"));
         assertThat(historyCount()).isZero();
     }
+    @Test void lateSubmissionIsStoredAndVisibleInExistingManagerApis() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002)
+            .andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/submissions/72001")
+                .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.late").value(true));
+        fixture.sql("UPDATE request_targets SET extended_due_at='2099-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+    }
+
+    @Test void personalDeadlineMakesSubmissionOnTime() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        fixture.sql("UPDATE request_targets SET extended_due_at='2099-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002)
+            .andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isFalse();
+    }
+
+    @Test void lateResubmissionUsesItsOwnSubmissionTimeAndPreservesFirstSubmissionTime() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE submissions SET status='REVISION_REQUIRED',submitted_at='2020-01-01' WHERE id=72001");
+        fixture.sql("UPDATE requests SET closes_at='2020-01-02' WHERE id=71001");
+        fixture.sql("INSERT INTO revision_requests(id,submission_id,reason,requested_by) VALUES(74001,72001,'수정',70001)");
+        fixture.sql("INSERT INTO revision_request_fields(revision_request_id,field_key) VALUES(74001,'gpa')");
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.0},\"version\":2}",70002).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT submitted_at FROM submissions WHERE id=72001").query(java.time.LocalDateTime.class).single())
+            .isEqualTo(java.time.LocalDateTime.of(2020,1,1,0,0));
+    }
+
+    @Test void lateFirstSubmissionWithoutDraftIsAlsoRecorded() throws Exception {
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71002");
+        fixture.sql("UPDATE request_fields SET required=FALSE WHERE request_id=71002 AND field_type='FILE'");
+        send(71002,"submit","{\"answers\":{\"name\":\"첫 제출\",\"gpa\":3.0},\"version\":0}",70003).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE request_id=71002 AND scholar_id=70003").query(Boolean.class).single()).isTrue();
+    }
+
     @Test void supportsFirstSubmissionWithoutDraftWhenNoRequiredFile() throws Exception {
         fixture.sql("UPDATE request_fields SET required=FALSE WHERE request_id=71002 AND field_type='FILE'");
         send(71002,"submit","{\"answers\":{\"name\":\"첫 제출\",\"gpa\":3.0},\"version\":0}",70003)

@@ -29,7 +29,7 @@ public class SubmissionDraftService {
         if (!target) throw new BusinessException(ErrorCode.NOT_A_TARGET);
         var existing = repository.findSubmission(requestId, scholarId).orElse(null);
         Instant now = Instant.now();
-        if (!request.status().equals("IN_PROGRESS") || !now.isBefore(request.closesAt())
+        if (!request.status().equals("IN_PROGRESS")
             || existing != null && !existing.status().equals("DRAFT") && !existing.status().equals("REVISION_REQUIRED")) {
             throw new BusinessException(ErrorCode.SUBMISSION_LOCKED);
         }

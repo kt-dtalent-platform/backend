@@ -151,9 +151,9 @@ class SubmissionDraftControllerTest {
     }
 
     @Test
-    void rejectsDeadlineAndClosedRequest() throws Exception {
+    void acceptsDraftAfterDeadlineButRejectsClosedRequest() throws Exception {
         jdbc.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=1801").update();
-        save("{\"answers\":{},\"version\":0}").andExpect(status().is(422));
+        save("{\"answers\":{},\"version\":0}").andExpect(status().isOk());
         jdbc.sql("UPDATE requests SET closes_at='2099-01-01', status='CLOSED' WHERE id=1801").update();
         save("{\"answers\":{},\"version\":0}").andExpect(status().is(422));
     }

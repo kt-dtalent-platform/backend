@@ -26,7 +26,7 @@ public class SubmissionFinalService {
         var request=repository.request(requestId,user).orElseThrow(()->new BusinessException(ErrorCode.REQUEST_NOT_FOUND));
         if(!target) throw new BusinessException(ErrorCode.NOT_A_TARGET);
         Instant now=Instant.now();
-        if(!request.status().equals("IN_PROGRESS") || !now.isBefore(request.closesAt())) throw new BusinessException(ErrorCode.DEADLINE_PASSED);
+        if(!request.status().equals("IN_PROGRESS")) throw new BusinessException(ErrorCode.DEADLINE_PASSED);
         if(resubmit && (previous==null || !previous.status().equals("REVISION_REQUIRED"))) throw new BusinessException(ErrorCode.NOT_IN_REVISION);
         if(!resubmit && previous!=null && !previous.status().equals("DRAFT")) throw new BusinessException(ErrorCode.ALREADY_SUBMITTED);
         int version=previous==null?0:previous.version();
@@ -41,12 +41,13 @@ public class SubmissionFinalService {
         }
         var files=previous==null?List.<SubmissionFinalRepository.FileSnapshot>of():repository.files(previous.id());
         validator.validateComplete(answers,drafts.fields(requestId),files);
+        boolean late=!now.isBefore(request.closesAt());
         now=now.truncatedTo(ChronoUnit.SECONDS);
         String state=resubmit?"RESUBMITTED":"SUBMITTED";
         long id;
-        if(previous==null) id=repository.insert(requestId,user,answers,now);
+        if(previous==null) id=repository.insert(requestId,user,answers,late,now);
         else {
-            if(repository.update(previous,answers,state,now)!=1) throw new BusinessException(ErrorCode.VERSION_CONFLICT);
+            if(repository.update(previous,answers,state,late,now)!=1) throw new BusinessException(ErrorCode.VERSION_CONFLICT);
             id=previous.id();
         }
         repository.history(id,previous==null?null:previous.status(),state,user,previous==null?Map.of():previous.answers(),files,now);

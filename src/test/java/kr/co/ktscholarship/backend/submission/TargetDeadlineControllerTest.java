@@ -66,16 +66,18 @@ class TargetDeadlineControllerTest {
         mvc.perform(as(put("/v1/me/submissions/71001/draft").contentType("application/json")
             .content("{\"answers\":{\"name\":\"학생\"},\"version\":2}"),70002,"SCHOLAR")).andExpect(status().isOk());
         mvc.perform(as(put("/v1/me/submissions/71001/draft").contentType("application/json")
-            .content("{\"answers\":{},\"version\":0}"),70003,"SCHOLAR")).andExpect(status().isUnprocessableEntity());
+            .content("{\"answers\":{},\"version\":0}"),70003,"SCHOLAR")).andExpect(status().isOk());
     }
-    @Test void finalSubmissionAcceptsExtendedStudentAndRejectsOtherStudent() throws Exception {
+    @Test void finalSubmissionMarksOnlyTheUnextendedStudentLate() throws Exception {
         grant(71001);
         jdbc.sql("UPDATE submission_files SET upload_status='UPLOADED' WHERE id=73001").update();
         mvc.perform(as(post("/v1/me/submissions/71001/submit").contentType("application/json")
             .content("{\"answers\":{\"name\":\"학생\",\"gpa\":3.8},\"version\":2}"),70002,"SCHOLAR"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.status").value("SUBMITTED"));
         mvc.perform(as(post("/v1/me/submissions/71001/submit").contentType("application/json")
-            .content("{\"answers\":{},\"version\":0}"),70003,"SCHOLAR")).andExpect(status().isUnprocessableEntity());
+            .content("{\"answers\":{\"name\":\"다른학생\",\"gpa\":3.5},\"version\":0}"),70003,"SCHOLAR")).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isFalse();
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72002").query(Boolean.class).single()).isTrue();
     }
     @Test void resubmissionUsesExtendedDeadlineAndPreservesFirstSubmission() throws Exception {
         grant(71002);
@@ -91,12 +93,12 @@ class TargetDeadlineControllerTest {
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.status").value("RESUBMITTED"))
             .andExpect(jsonPath("$.success.data.submittedAt").value("2026-11-01T00:00:00Z"));
     }
-    @Test void expiredExtensionAndManualClosedRequestStillBlockWrites() throws Exception {
+    @Test void expiredExtensionAllowsLateDraftButClosedRequestCannotBeExtended() throws Exception {
         grant(71001);
         jdbc.sql("UPDATE request_targets SET extended_due_at=:past WHERE request_id=71001 AND scholar_id=70002")
             .param("past",UtcDateTimes.toDb(Instant.now().minusSeconds(1))).update();
         mvc.perform(as(put("/v1/me/submissions/71001/draft").contentType("application/json")
-            .content("{\"answers\":{},\"version\":2}"),70002,"SCHOLAR")).andExpect(status().isUnprocessableEntity());
+            .content("{\"answers\":{},\"version\":2}"),70002,"SCHOLAR")).andExpect(status().isOk());
         mvc.perform(extend(71004,70002,future.plus(100,ChronoUnit.DAYS))).andExpect(status().isUnprocessableEntity());
     }
     @Test void rejectsPastShortenedMissingAndUnauthorizedChanges() throws Exception {

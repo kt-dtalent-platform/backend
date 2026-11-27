@@ -74,7 +74,7 @@ public class FileLifecycleService {
     private void mutable(FilePresignRepository.Submission s,String field) {
         var request=submissions.requestState(s.requestId(),s.scholarId());
         if (!request.target() || !request.published() || !request.status().equals("IN_PROGRESS")
-            || !Instant.now().isBefore(request.closesAt()) || !List.of("DRAFT","REVISION_REQUIRED").contains(s.status())
+            || !List.of("DRAFT","REVISION_REQUIRED").contains(s.status())
             || s.status().equals("REVISION_REQUIRED") && !submissions.isRevisionField(s.id(),field)) {
             throw new BusinessException(ErrorCode.FILE_LOCKED);
         }

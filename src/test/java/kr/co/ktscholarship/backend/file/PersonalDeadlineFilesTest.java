@@ -66,19 +66,18 @@ class PersonalDeadlineFilesTest {
         return user(post("/v1/submissions/{s}/files/presign",submission).contentType("application/json")
             .content("{\"fieldKey\":\"receipt\",\"fileName\":\"검증.pdf\",\"contentType\":\"application/pdf\",\"size\":123}"),id);
     }
-    @Test void filePresignCompletionAndDeleteHonorOnlySelectedStudentsExtension() throws Exception {
+    @Test void fileMutationsRemainAvailableToBothExtendedAndLateStudents() throws Exception {
         mvc.perform(presign(72001,70002)).andExpect(status().isOk());
         mvc.perform(user(post("/v1/submissions/72001/files/73001/complete"),70002)).andExpect(status().isOk());
         mvc.perform(user(delete("/v1/files/73001"),70002)).andExpect(status().isOk());
-        mvc.perform(presign(72002,70003)).andExpect(status().isUnprocessableEntity());
-        mvc.perform(user(post("/v1/submissions/72002/files/73002/complete"),70003)).andExpect(status().isUnprocessableEntity());
-        mvc.perform(user(delete("/v1/files/73002"),70003)).andExpect(status().isUnprocessableEntity());
-        verify(storage,never()).head("workflow/other");
-        verify(storage,never()).delete("workflow/other");
+        mvc.perform(presign(72002,70003)).andExpect(status().isOk());
+        mvc.perform(user(post("/v1/submissions/72002/files/73002/complete"),70003)).andExpect(status().isOk());
+        mvc.perform(user(delete("/v1/files/73002"),70003)).andExpect(status().isOk());
+        verify(storage).head("workflow/other");
+        verify(storage).delete("workflow/other");
     }
-    @Test void expirationAlsoBlocksAllFileMutations() throws Exception {
-        jdbc.sql("UPDATE request_targets SET extended_due_at=:past WHERE request_id=71001 AND scholar_id=70002")
-            .param("past",UtcDateTimes.toDb(Instant.now().minusSeconds(1))).update();
+    @Test void closedRequestBlocksAllFileMutationsEvenWithAnExtension() throws Exception {
+        jdbc.sql("UPDATE requests SET status='CLOSED' WHERE id=71001").update();
         mvc.perform(presign(72001,70002)).andExpect(status().isUnprocessableEntity());
         mvc.perform(user(post("/v1/submissions/72001/files/73001/complete"),70002)).andExpect(status().isUnprocessableEntity());
         mvc.perform(user(delete("/v1/files/73001"),70002)).andExpect(status().isUnprocessableEntity());
