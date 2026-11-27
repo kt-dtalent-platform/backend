@@ -26,7 +26,9 @@ public class SubmissionFinalService {
         var request=repository.request(requestId,user).orElseThrow(()->new BusinessException(ErrorCode.REQUEST_NOT_FOUND));
         if(!target) throw new BusinessException(ErrorCode.NOT_A_TARGET);
         Instant now=Instant.now();
-        if(!request.status().equals("IN_PROGRESS")) throw new BusinessException(ErrorCode.DEADLINE_PASSED);
+        boolean closedRevision=resubmit && request.status().equals("CLOSED") && previous!=null
+            && previous.status().equals("REVISION_REQUIRED");
+        if(!request.status().equals("IN_PROGRESS") && !closedRevision) throw new BusinessException(ErrorCode.DEADLINE_PASSED);
         if(resubmit && (previous==null || !previous.status().equals("REVISION_REQUIRED"))) throw new BusinessException(ErrorCode.NOT_IN_REVISION);
         if(!resubmit && previous!=null && !previous.status().equals("DRAFT")) throw new BusinessException(ErrorCode.ALREADY_SUBMITTED);
         int version=previous==null?0:previous.version();

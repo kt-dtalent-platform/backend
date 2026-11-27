@@ -169,4 +169,36 @@ class SubmissionFinalTest {
         assertThat(jdbc.sql("SELECT version FROM submissions WHERE id=72001").query(Integer.class).single()).isEqualTo(2);
         assertThat(historyCount()).isZero();
     }
+    @Test void revisionAfterManualCloseDoesNotReopenInitialSubmission() throws Exception {
+        uploaded();
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002).andExpect(status().isOk());
+        managerPost("/v1/requests/71001/close", "{}").andExpect(status().isOk());
+        String due=java.time.Instant.now().plusSeconds(3600).toString();
+        managerPost("/v1/submissions/72001/revision", "{\"fieldKeys\":[\"gpa\"],\"reason\":\"평점 수정\",\"dueAt\":\""+due+"\",\"version\":3}")
+            .andExpect(status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/me/tasks")
+            .with(jwt().jwt(j->j.subject("70002")).authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.items[*].requestId",org.hamcrest.Matchers.hasItem(71001)));
+        send(71001,"submit","{\"answers\":{},\"version\":0}",70003).andExpect(status().is(422));
+        send(71001,"submit","{\"answers\":{},\"version\":4}",70002).andExpect(status().is(422));
+        send(71001,"resubmit","{\"answers\":{\"name\":\"변경 불가\"},\"version\":4}",70002)
+            .andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/v1/me/submissions/71001/draft")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"answers\":{\"gpa\":4.0},\"version\":4}")
+            .with(jwt().jwt(j->j.subject("70002")).authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isOk());
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.0},\"version\":5}",70002).andExpect(status().isOk());
+        managerPost("/v1/submissions/72001/revision", "{\"fieldKeys\":[\"gpa\"],\"reason\":\"다시 확인\",\"dueAt\":\""+due+"\",\"version\":6}")
+            .andExpect(status().isOk());
+        fixture.sql("UPDATE request_targets SET extended_due_at='2020-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.1},\"version\":7}",70002).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT status FROM requests WHERE id=71001").query(String.class).single()).isEqualTo("CLOSED");
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        send(71001,"resubmit","{\"answers\":{},\"version\":8}",70002).andExpect(status().is(422));
+    }
+    ResultActions managerPost(String path,String body) throws Exception {
+        return mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+            .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))));
+    }
+
 }

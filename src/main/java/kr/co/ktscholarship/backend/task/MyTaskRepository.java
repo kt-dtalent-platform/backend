@@ -35,7 +35,7 @@ public class MyTaskRepository {
             FROM requests r
             JOIN request_targets t ON t.request_id=r.id AND t.scholar_id=:scholarId
             LEFT JOIN submissions s ON s.request_id = r.id AND s.scholar_id = :scholarId
-            WHERE r.status = 'IN_PROGRESS'
+            WHERE (r.status = 'IN_PROGRESS' OR (r.status='CLOSED' AND s.status='REVISION_REQUIRED'))
                 AND (:todoOnly = FALSE OR s.id IS NULL OR s.status IN ('DRAFT', 'REVISION_REQUIRED'))
                 AND (:doneOnly = FALSE OR s.status IN ('SUBMITTED', 'RESUBMITTED', 'CONFIRMED'))
             ORDER BY
