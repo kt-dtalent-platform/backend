@@ -17,10 +17,12 @@ public class ManagerDashboardService {
             counts.stream().mapToLong(ManagerDashboardRepository.RequestCounts::resubmitted).sum(),
             oldest==null?null:oldest.id(),oldest==null?null:oldest.submittedAt(),
             counts.stream().mapToLong(ManagerDashboardRepository.RequestCounts::late).sum());
-        return new Dashboard(review,counts.stream().map(c->new RequestSummary(c.id(),c.title(),c.closesAt(),c.targets(),
-            c.confirmed(),c.waiting(),c.revision(),c.targets()-c.confirmed()-c.waiting()-c.revision(),c.late())).toList());
+        return new Dashboard(review,counts.stream()
+            .filter(c->c.status().equals("IN_PROGRESS") || c.waiting()>0 || c.revision()>0)
+            .map(c->new RequestSummary(c.id(),c.title(),c.closesAt(),c.targets(),
+            c.confirmed(),c.waiting(),c.revision(),c.targets()-c.confirmed()-c.waiting()-c.revision(),c.late(),c.status())).toList());
     }
     public record Dashboard(Review review,List<RequestSummary> requests) {}
     public record Review(long waiting,long resubmitted,Long oldestSubmissionId,Instant oldestSubmittedAt,long late) {}
-    public record RequestSummary(long requestId,String title,Instant closesAt,long targetCount,long confirmed,long waiting,long revisionRequired,long notSubmitted,long late) {}
+    public record RequestSummary(long requestId,String title,Instant closesAt,long targetCount,long confirmed,long waiting,long revisionRequired,long notSubmitted,long late,String status) {}
 }

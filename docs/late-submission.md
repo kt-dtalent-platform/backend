@@ -9,7 +9,8 @@
 
 ## 프론트 연결
 - 기존 담당자 제출 현황·상세 API의 late(boolean)가 저장된 is_late를 그대로 반환한다. true면 ‘마감 후 제출’ 태그를 표시한다.
-- GET /v1/dashboard/manager: review.late(전체 건수), requests[].late(요청별 건수)를 추가한다. 기존과 같은 공개 IN_PROGRESS 요청·프로그램/기수 필터 범위이며 DRAFT는 세지 않는다. 보완 필요·확인 완료라도 저장된 late가 true이면 센다.
+- GET /v1/dashboard/manager: review.late(전체 건수), requests[].late(요청별 건수)를 추가한다. 공개 IN_PROGRESS·CLOSED 요청을 프로그램/기수 필터로 집계하며 DRAFT는 세지 않는다. 보완 필요·확인 완료라도 저장된 late가 true이면 센다.
+- 대시보드 requests에는 진행 중 요청과 검토 대기·보완 필요가 남은 CLOSED 요청만 표시한다. requests[].status로 접수 마감 여부를 구분한다. 마감된 요청의 검토 대기·가장 오래된 제출도 집계하며, 완료된 마감 요청은 카드에서 제외하되 전체 지연 건수에는 유지한다.
 - late만 따로 조회하는 서버 필터는 추가하지 않았다. 서버 페이지 필터가 필요하면 승완의 제출 현황 API와 계약을 맞춰야 한다.
 
 ## 별도 합의·승완 연결
