@@ -86,6 +86,10 @@ class SubmissionFinalTest {
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/submissions/72001")
                 .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.late").value(true));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/dashboard/manager")
+                .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1))
+            .andExpect(jsonPath("$.success.data.requests[0].late").value(1));
         fixture.sql("UPDATE request_targets SET extended_due_at='2099-01-01' WHERE request_id=71001 AND scholar_id=70002");
         assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
     }

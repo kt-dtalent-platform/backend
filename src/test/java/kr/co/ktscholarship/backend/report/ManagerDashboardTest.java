@@ -54,6 +54,17 @@ class ManagerDashboardTest {
         mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(jsonPath("$.success.data.review.oldestSubmissionId").value(72002));
     }
+    @Test void lateCountsIncludeSubmittedStatesButExcludeDraftsAndOtherCohorts() throws Exception {
+        fixture.sql("UPDATE submissions SET is_late=TRUE");
+        mvc.perform(get("/v1/dashboard/manager").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1));
+        fixture.sql("UPDATE submissions SET status='CONFIRMED' WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1));
+        mvc.perform(get("/v1/dashboard/manager?cohortId=99999").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(0));
+    }
+
     @Test void validatesFiltersAndRestrictsRole() throws Exception {
         mvc.perform(get("/v1/dashboard/manager?programId=99999").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.requests").isEmpty())

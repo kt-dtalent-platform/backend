@@ -15,11 +15,12 @@ public class ManagerDashboardService {
         var oldest=repository.oldest(program,cohort).orElse(null);
         var review=new Review(counts.stream().mapToLong(ManagerDashboardRepository.RequestCounts::waiting).sum(),
             counts.stream().mapToLong(ManagerDashboardRepository.RequestCounts::resubmitted).sum(),
-            oldest==null?null:oldest.id(),oldest==null?null:oldest.submittedAt());
+            oldest==null?null:oldest.id(),oldest==null?null:oldest.submittedAt(),
+            counts.stream().mapToLong(ManagerDashboardRepository.RequestCounts::late).sum());
         return new Dashboard(review,counts.stream().map(c->new RequestSummary(c.id(),c.title(),c.closesAt(),c.targets(),
-            c.confirmed(),c.waiting(),c.revision(),c.targets()-c.confirmed()-c.waiting()-c.revision())).toList());
+            c.confirmed(),c.waiting(),c.revision(),c.targets()-c.confirmed()-c.waiting()-c.revision(),c.late())).toList());
     }
     public record Dashboard(Review review,List<RequestSummary> requests) {}
-    public record Review(long waiting,long resubmitted,Long oldestSubmissionId,Instant oldestSubmittedAt) {}
-    public record RequestSummary(long requestId,String title,Instant closesAt,long targetCount,long confirmed,long waiting,long revisionRequired,long notSubmitted) {}
+    public record Review(long waiting,long resubmitted,Long oldestSubmissionId,Instant oldestSubmittedAt,long late) {}
+    public record RequestSummary(long requestId,String title,Instant closesAt,long targetCount,long confirmed,long waiting,long revisionRequired,long notSubmitted,long late) {}
 }

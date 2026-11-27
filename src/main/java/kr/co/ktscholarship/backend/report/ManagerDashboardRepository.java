@@ -28,13 +28,14 @@ public class ManagerDashboardRepository {
             SUM(CASE WHEN s.status='CONFIRMED' THEN 1 ELSE 0 END) confirmed,
             SUM(CASE WHEN s.status IN ('SUBMITTED','RESUBMITTED') THEN 1 ELSE 0 END) waiting,
             SUM(CASE WHEN s.status='RESUBMITTED' THEN 1 ELSE 0 END) resubmitted,
-            SUM(CASE WHEN s.status='REVISION_REQUIRED' THEN 1 ELSE 0 END) revision
+            SUM(CASE WHEN s.status='REVISION_REQUIRED' THEN 1 ELSE 0 END) revision,
+            SUM(CASE WHEN s.status<>'DRAFT' AND s.is_late=TRUE THEN 1 ELSE 0 END) late
             FROM requests r LEFT JOIN request_targets t ON t.request_id=r.id
             LEFT JOIN submissions s ON s.request_id=t.request_id AND s.scholar_id=t.scholar_id
             WHERE """+" "+SCOPE+" GROUP BY r.id,r.title,r.closes_at ORDER BY r.closes_at,r.id")
             .paramSource(scope(program,cohort)).query((r,n)->new RequestCounts(r.getLong("id"),r.getString("title"),
                 UtcDateTimes.fromDb(r.getObject("closes_at",LocalDateTime.class)),r.getLong("targets"),r.getLong("confirmed"),
-                r.getLong("waiting"),r.getLong("resubmitted"),r.getLong("revision"))).list();
+                r.getLong("waiting"),r.getLong("resubmitted"),r.getLong("revision"),r.getLong("late"))).list();
     }
     Optional<Oldest> oldest(Long program,Long cohort) {
         return jdbc.sql("""
@@ -45,6 +46,6 @@ public class ManagerDashboardRepository {
             .paramSource(scope(program,cohort)).query((r,n)->new Oldest(r.getLong("id"),
                 UtcDateTimes.fromDb(r.getObject("waiting_since",LocalDateTime.class)))).optional();
     }
-    record RequestCounts(long id,String title,Instant closesAt,long targets,long confirmed,long waiting,long resubmitted,long revision) {}
+    record RequestCounts(long id,String title,Instant closesAt,long targets,long confirmed,long waiting,long resubmitted,long revision,long late) {}
     record Oldest(long id,Instant submittedAt) {}
 }
