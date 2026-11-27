@@ -84,4 +84,27 @@ class RequestDeadlineClosureTest {
         repository.closeExpired(now);
         assertThat(requestStatus(71001)).isEqualTo("IN_PROGRESS");
     }
+    @Test void managerCanClosePendingRequestAndRepeatWithoutDuplicateAudit() throws Exception {
+        for(int i=0;i<2;i++) mvc.perform(post("/v1/requests/71001/close")
+            .with(jwt()
+                .jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success.data.status").value("CLOSED"));
+        assertThat(requestStatus(71001)).isEqualTo("CLOSED");
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM audit_logs WHERE action='CLOSE_REQUEST' AND target_id=71001").query(Integer.class).single()).isEqualTo(1);
+    }
+    @Test void manualCloseRequiresManagerAndPublishedRequest() throws Exception {
+        mvc.perform(post("/v1/requests/71001/close"))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(post("/v1/requests/71001/close")
+            .with(jwt()
+                .jwt(j->j.subject("70002")).authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isForbidden());
+        for(long id:new long[]{71003,79999}) mvc.perform(post("/v1/requests/"+id+"/close")
+            .with(jwt()
+                .jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isNotFound());
+        assertThat(requestStatus(71001)).isEqualTo("IN_PROGRESS");
+    }
+
 }

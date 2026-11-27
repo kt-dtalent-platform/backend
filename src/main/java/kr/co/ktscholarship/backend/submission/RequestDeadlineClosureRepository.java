@@ -10,6 +10,23 @@ public class RequestDeadlineClosureRepository {
     private final JdbcClient jdbc;
     public RequestDeadlineClosureRepository(JdbcClient jdbc) { this.jdbc = jdbc; }
 
+    public java.util.Optional<String> lockStatus(long id) {
+        return jdbc.sql("SELECT status FROM requests WHERE id=:id AND published_at IS NOT NULL FOR UPDATE")
+            .param("id",id).query(String.class).optional();
+    }
+
+    public void close(long id, Instant now) {
+        jdbc.sql("UPDATE requests SET status='CLOSED',updated_at=:now WHERE id=:id")
+            .param("id",id).param("now",UtcDateTimes.toDb(now)).update();
+    }
+
+    public void audit(long id,long actor,Instant now) {
+        jdbc.sql("""
+            INSERT INTO audit_logs(actor_id,action,target_type,target_id,row_count,created_at)
+            VALUES(:actor,'CLOSE_REQUEST','REQUEST',:id,1,:now)
+            """).param("actor",actor).param("id",id).param("now",UtcDateTimes.toDb(now)).update();
+    }
+
     public int closeExpired(Instant now) {
         return jdbc.sql("""
             UPDATE requests SET status='CLOSED', updated_at=:now
