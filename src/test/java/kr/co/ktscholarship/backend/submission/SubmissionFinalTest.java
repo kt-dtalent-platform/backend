@@ -69,14 +69,59 @@ class SubmissionFinalTest {
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.details.fieldErrors[0].key").value("receipt"));
         assertThat(historyCount()).isZero();
     }
-    @Test void versionConflictAndDeadlineDoNotWriteAnything() throws Exception {
+    @Test void versionConflictAndClosedRequestDoNotWriteAnything() throws Exception {
         uploaded();
         send(71001,"submit","{\"answers\":{},\"version\":1}",70002).andExpect(status().isConflict());
-        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        fixture.sql("UPDATE requests SET status='CLOSED' WHERE id=71001");
         send(71001,"submit","{\"answers\":{},\"version\":2}",70002).andExpect(status().is(422))
             .andExpect(jsonPath("$.error.code").value("DEADLINE_PASSED"));
         assertThat(historyCount()).isZero();
     }
+    @Test void lateSubmissionIsStoredAndVisibleInExistingManagerApis() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002)
+            .andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/submissions/72001")
+                .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.late").value(true));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/dashboard/manager")
+                .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1))
+            .andExpect(jsonPath("$.success.data.requests[0].late").value(1));
+        fixture.sql("UPDATE request_targets SET extended_due_at='2099-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+    }
+
+    @Test void personalDeadlineMakesSubmissionOnTime() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
+        fixture.sql("UPDATE request_targets SET extended_due_at='2099-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002)
+            .andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isFalse();
+    }
+
+    @Test void lateResubmissionUsesItsOwnSubmissionTimeAndPreservesFirstSubmissionTime() throws Exception {
+        uploaded();
+        fixture.sql("UPDATE submissions SET status='REVISION_REQUIRED',submitted_at='2020-01-01' WHERE id=72001");
+        fixture.sql("UPDATE requests SET closes_at='2020-01-02' WHERE id=71001");
+        fixture.sql("INSERT INTO revision_requests(id,submission_id,reason,requested_by) VALUES(74001,72001,'수정',70001)");
+        fixture.sql("INSERT INTO revision_request_fields(revision_request_id,field_key) VALUES(74001,'gpa')");
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.0},\"version\":2}",70002).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("SELECT submitted_at FROM submissions WHERE id=72001").query(java.time.LocalDateTime.class).single())
+            .isEqualTo(java.time.LocalDateTime.of(2020,1,1,0,0));
+    }
+
+    @Test void lateFirstSubmissionWithoutDraftIsAlsoRecorded() throws Exception {
+        fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71002");
+        fixture.sql("UPDATE request_fields SET required=FALSE WHERE request_id=71002 AND field_type='FILE'");
+        send(71002,"submit","{\"answers\":{\"name\":\"첫 제출\",\"gpa\":3.0},\"version\":0}",70003).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE request_id=71002 AND scholar_id=70003").query(Boolean.class).single()).isTrue();
+    }
+
     @Test void supportsFirstSubmissionWithoutDraftWhenNoRequiredFile() throws Exception {
         fixture.sql("UPDATE request_fields SET required=FALSE WHERE request_id=71002 AND field_type='FILE'");
         send(71002,"submit","{\"answers\":{\"name\":\"첫 제출\",\"gpa\":3.0},\"version\":0}",70003)
@@ -124,4 +169,36 @@ class SubmissionFinalTest {
         assertThat(jdbc.sql("SELECT version FROM submissions WHERE id=72001").query(Integer.class).single()).isEqualTo(2);
         assertThat(historyCount()).isZero();
     }
+    @Test void revisionAfterManualCloseDoesNotReopenInitialSubmission() throws Exception {
+        uploaded();
+        send(71001,"submit","{\"answers\":{\"name\":\"홍길동\",\"gpa\":3.5},\"version\":2}",70002).andExpect(status().isOk());
+        managerPost("/v1/requests/71001/close", "{}").andExpect(status().isOk());
+        String due=java.time.Instant.now().plusSeconds(3600).toString();
+        managerPost("/v1/submissions/72001/revision", "{\"fieldKeys\":[\"gpa\"],\"reason\":\"평점 수정\",\"dueAt\":\""+due+"\",\"version\":3}")
+            .andExpect(status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/v1/me/tasks")
+            .with(jwt().jwt(j->j.subject("70002")).authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.items[*].requestId",org.hamcrest.Matchers.hasItem(71001)));
+        send(71001,"submit","{\"answers\":{},\"version\":0}",70003).andExpect(status().is(422));
+        send(71001,"submit","{\"answers\":{},\"version\":4}",70002).andExpect(status().is(422));
+        send(71001,"resubmit","{\"answers\":{\"name\":\"변경 불가\"},\"version\":4}",70002)
+            .andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/v1/me/submissions/71001/draft")
+            .contentType(MediaType.APPLICATION_JSON).content("{\"answers\":{\"gpa\":4.0},\"version\":4}")
+            .with(jwt().jwt(j->j.subject("70002")).authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR"))))
+            .andExpect(status().isOk());
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.0},\"version\":5}",70002).andExpect(status().isOk());
+        managerPost("/v1/submissions/72001/revision", "{\"fieldKeys\":[\"gpa\"],\"reason\":\"다시 확인\",\"dueAt\":\""+due+"\",\"version\":6}")
+            .andExpect(status().isOk());
+        fixture.sql("UPDATE request_targets SET extended_due_at='2020-01-01' WHERE request_id=71001 AND scholar_id=70002");
+        send(71001,"resubmit","{\"answers\":{\"gpa\":4.1},\"version\":7}",70002).andExpect(status().isOk());
+        assertThat(jdbc.sql("SELECT status FROM requests WHERE id=71001").query(String.class).single()).isEqualTo("CLOSED");
+        assertThat(jdbc.sql("SELECT is_late FROM submissions WHERE id=72001").query(Boolean.class).single()).isTrue();
+        send(71001,"resubmit","{\"answers\":{},\"version\":8}",70002).andExpect(status().is(422));
+    }
+    ResultActions managerPost(String path,String body) throws Exception {
+        return mvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body)
+            .with(jwt().jwt(j->j.subject("70001")).authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))));
+    }
+
 }

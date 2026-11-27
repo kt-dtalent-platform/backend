@@ -98,14 +98,15 @@ class FileLifecycleTest {
         mvc.perform(scholar(post("/v1/submissions/72001/files/73001/complete"))).andExpect(status().is(422));
         verifyNoInteractions(storage);
     }
-    @Test void latestRevisionAndDeadlineAreEnforced() throws Exception {
+    @Test void latestRevisionIsEnforcedAndFileDeletionWorksAfterDeadline() throws Exception {
         fixture.sql("UPDATE submissions SET status='REVISION_REQUIRED' WHERE id=72001");
         fixture.sql("INSERT INTO revision_requests(id,submission_id,reason,requested_by,requested_at) VALUES(74001,72001,'이전',70001,'2026-01-01'),(74002,72001,'최신',70001,'2026-02-01')");
         fixture.sql("INSERT INTO revision_request_fields(revision_request_id,field_key) VALUES(74001,'receipt'),(74002,'other_file')");
         mvc.perform(scholar(delete("/v1/files/73001"))).andExpect(status().is(422));
         fixture.sql("UPDATE revision_request_fields SET field_key='receipt' WHERE revision_request_id=74002");
         fixture.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=71001");
-        mvc.perform(scholar(delete("/v1/files/73001"))).andExpect(status().is(422));
+        mvc.perform(scholar(post("/v1/submissions/72001/files/73001/complete"))).andExpect(status().isOk());
+        mvc.perform(scholar(delete("/v1/files/73001"))).andExpect(status().isOk());
     }
     @Test void cleanupOnlyRemovesPendingOlderThan24Hours() {
         jdbc.sql("UPDATE submission_files SET created_at=:time WHERE id IN (73001,73002)")

@@ -167,9 +167,9 @@ class FilePresignControllerTest {
     }
 
     @Test
-    void checksDeadlinePublicationAndCurrentTarget() throws Exception {
+    void allowsUploadAfterDeadlineButChecksPublicationAndCurrentTarget() throws Exception {
         jdbc.sql("UPDATE requests SET closes_at='2020-01-01' WHERE id=19001").update();
-        upload("receipt","a.pdf",1).andExpect(status().is(422));
+        upload("receipt","a.pdf",1).andExpect(status().isOk());
         jdbc.sql("UPDATE requests SET closes_at='2099-01-01',published_at=NULL WHERE id=19001").update();
         upload("receipt","a.pdf",1).andExpect(status().is(422));
         jdbc.sql("UPDATE requests SET published_at='2026-11-01',status='CLOSED' WHERE id=19001").update();

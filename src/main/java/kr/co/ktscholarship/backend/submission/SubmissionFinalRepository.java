@@ -54,23 +54,23 @@ public class SubmissionFinalRepository {
             .param("id",submission).query((r,n)->new FileSnapshot(r.getLong("id"),r.getString("field_key"),r.getString("original_name"),r.getLong("size_bytes"),r.getString("upload_status"))).list();
     }
 
-    long insert(long request,long scholar,Map<String,Object> answers,Instant now) {
+    long insert(long request,long scholar,Map<String,Object> answers,boolean late,Instant now) {
         var key=new GeneratedKeyHolder();
         jdbc.sql("""
-            INSERT INTO submissions(request_id,scholar_id,status,answers,version,submit_count,submitted_at,created_at,updated_at)
-            VALUES(:request,:scholar,'SUBMITTED',%s,1,1,:now,:now,:now)
+            INSERT INTO submissions(request_id,scholar_id,status,answers,version,submit_count,submitted_at,created_at,updated_at,is_late)
+            VALUES(:request,:scholar,'SUBMITTED',%s,1,1,:now,:now,:now,:late)
             """.formatted(jsonParameter)).param("request",request).param("scholar",scholar).param("json",json.writeValueAsString(answers))
-            .param("now",UtcDateTimes.toDb(now)).update(key,"id");
+            .param("late",late).param("now",UtcDateTimes.toDb(now)).update(key,"id");
         return java.util.Objects.requireNonNull(key.getKey()).longValue();
     }
 
-    int update(Submission previous,Map<String,Object> answers,String state,Instant now) {
+    int update(Submission previous,Map<String,Object> answers,String state,boolean late,Instant now) {
         return jdbc.sql("""
             UPDATE submissions SET status=:state,answers=%s,version=version+1,submit_count=submit_count+1,
-                submitted_at=COALESCE(submitted_at,:now),updated_at=:now
+                submitted_at=COALESCE(submitted_at,:now),updated_at=:now,is_late=:late
             WHERE id=:id AND version=:version AND status=:previous
             """.formatted(jsonParameter)).param("id",previous.id()).param("version",previous.version()).param("previous",previous.status())
-            .param("state",state).param("json",json.writeValueAsString(answers)).param("now",UtcDateTimes.toDb(now)).update();
+            .param("late",late).param("state",state).param("json",json.writeValueAsString(answers)).param("now",UtcDateTimes.toDb(now)).update();
     }
 
     void history(long id,String from,String to,long actor,Map<String,Object> before,List<FileSnapshot> files,Instant now) {

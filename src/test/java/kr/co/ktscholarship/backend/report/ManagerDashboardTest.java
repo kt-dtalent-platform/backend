@@ -54,6 +54,17 @@ class ManagerDashboardTest {
         mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(jsonPath("$.success.data.review.oldestSubmissionId").value(72002));
     }
+    @Test void lateCountsIncludeSubmittedStatesButExcludeDraftsAndOtherCohorts() throws Exception {
+        fixture.sql("UPDATE submissions SET is_late=TRUE");
+        mvc.perform(get("/v1/dashboard/manager").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1));
+        fixture.sql("UPDATE submissions SET status='CONFIRMED' WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(1));
+        mvc.perform(get("/v1/dashboard/manager?cohortId=99999").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.late").value(0));
+    }
+
     @Test void validatesFiltersAndRestrictsRole() throws Exception {
         mvc.perform(get("/v1/dashboard/manager?programId=99999").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.requests").isEmpty())
@@ -63,4 +74,29 @@ class ManagerDashboardTest {
         mvc.perform(get("/v1/dashboard/manager")).andExpect(status().isUnauthorized());
         mvc.perform(get("/v1/dashboard/manager").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_SCHOLAR")))).andExpect(status().isForbidden());
     }
+    @Test void closedRequestsKeepPendingReviewsAndLateTotalsWithoutCompletedCards() throws Exception {
+        fixture.sql("UPDATE requests SET status='CLOSED' WHERE id=71002");
+        fixture.sql("UPDATE submissions SET is_late=TRUE WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.success.data.review.waiting").value(1))
+            .andExpect(jsonPath("$.success.data.review.late").value(1))
+            .andExpect(jsonPath("$.success.data.review.oldestSubmissionId").value(72003))
+            .andExpect(jsonPath("$.success.data.requests[?(@.requestId == 71002)].status",org.hamcrest.Matchers.contains("CLOSED")));
+        fixture.sql("UPDATE submissions SET status='REVISION_REQUIRED' WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(jsonPath("$.success.data.review.waiting").value(0))
+            .andExpect(jsonPath("$.success.data.requests[?(@.requestId == 71002)].revisionRequired",org.hamcrest.Matchers.contains(1)));
+        fixture.sql("UPDATE submissions SET status='RESUBMITTED' WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(jsonPath("$.success.data.review.resubmitted").value(1));
+        fixture.sql("UPDATE submissions SET status='CONFIRMED' WHERE id=72003");
+        mvc.perform(get("/v1/dashboard/manager?cohortId=70001").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(jsonPath("$.success.data.review.waiting").value(0))
+            .andExpect(jsonPath("$.success.data.review.late").value(1))
+            .andExpect(jsonPath("$.success.data.review.oldestSubmissionId").isEmpty())
+            .andExpect(jsonPath("$.success.data.requests[?(@.requestId == 71002)]").isEmpty());
+        mvc.perform(get("/v1/dashboard/manager?cohortId=99999").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_MANAGER"))))
+            .andExpect(jsonPath("$.success.data.review.late").value(0));
+    }
+
 }

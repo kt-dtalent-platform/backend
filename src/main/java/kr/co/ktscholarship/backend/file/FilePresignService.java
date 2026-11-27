@@ -41,7 +41,8 @@ public class FilePresignService {
         var request = repository.requestState(submission.requestId(), userId);
         Instant now = Instant.now();
         if (!request.target()) throw new BusinessException(ErrorCode.ACCESS_DENIED);
-        if (!request.published() || !request.status().equals("IN_PROGRESS") || !now.isBefore(request.closesAt())
+        boolean closedRevision = request.status().equals("CLOSED") && submission.status().equals("REVISION_REQUIRED");
+        if (!request.published() || !request.status().equals("IN_PROGRESS") && !closedRevision
             || !List.of("DRAFT", "REVISION_REQUIRED").contains(submission.status())) {
             throw new BusinessException(ErrorCode.SUBMISSION_LOCKED);
         }
